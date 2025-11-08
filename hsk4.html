@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+<title>HSK Cards (Live Load from GitHub)</title>
+<script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5.2/dist/hanzi-writer.min.js"></script>
+<style>
+  :root{--pad:14px; --card:16px; --tile:160px; --gap:10px}
+  body{margin:0;background:#fafafa;font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans SC','Noto Sans',sans-serif}
+  header{position:sticky;top:0;background:#fff;border-bottom:1px solid #eee;padding:var(--pad);z-index:10}
+  h1{margin:0 0 8px;font-size:18px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  input[type="search"],select,button{padding:12px 14px;border-radius:12px;border:1px solid #ddd;background:#fff;font-size:17px;min-height:44px}
+
+  .alpha{display:flex;gap:6px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:6px}
+  .alpha::-webkit-scrollbar{display:none}
+  .alpha button{flex:0 0 auto;min-width:44px;min-height:40px;border-radius:10px;border:1px solid #ddd;background:#fff}
+  .alpha button.active{background:#111;color:#fff}
+
+  main{padding:var(--pad)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .card{background:#fff;border:1px solid #eee;border-radius:18px;padding:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .c-top{display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:8px}
+  .zz{font-size:40px;line-height:1}
+  .tt{font-size:26px;color:#666}
+
+  /* stroke grid (กลาง + โปร่ง) */
+  .writers-wrap{
+    margin:24px auto 18px;
+    display:flex;justify-content:center;
+    width:var(--tile);
+  }
+  .writers{
+    display:grid;grid-gap:var(--gap);
+    justify-items:center;align-items:center;row-gap:20px;
+  }
+  .writer{
+    display:flex;align-items:center;justify-content:center;
+    width:100%;aspect-ratio:1/1;
+    border-radius:10px;border:1px solid #e5e5e5;background:#f7fbff;
+    cursor:pointer;touch-action:manipulation;
+    transition:transform .06s ease, filter .06s ease, box-shadow .06s ease;
+  }
+  .writer:active,.writer.pressed{transform:scale(.96);filter:brightness(.96);box-shadow:inset 0 0 0 2px rgba(0,0,0,.06)}
+  .writer.fallback{background:#fff}
+  /* fallback glyph size will follow --cell (set by JS) */
+  .writer.fallback{font-size:calc(var(--cell, 80px) * 0.66);color:#222}
+
+  .pinyin-row{display:flex;gap:8px;align-items:center;justify-content:center;margin:6px 0}
+  .play-main{display:inline-flex;align-items:center;gap:8px;border:1px solid #ddd;background:#fff;border-radius:999px;padding:8px 14px;min-height:auto;font-size:16px}
+  .play-main::before{content:'🔊'}
+  .pinyin-text{font-size:18px}
+
+  .meaning{margin-top:8px;color:#333;font-size:16px;text-align:center}
+  .badge{font-size:12px;color:#666}
+</style>
+</head>
+<body>
+<header>
+  <h1>HSK Cards — (Live GitHub)</h1>
+  <div class="row" style="margin-bottom:8px">
+    <label>Dataset: <select id="dataset"></select></label>
+    <input id="q" type="search" placeholder="ค้นหา: อักษรจีน / pinyin / ความหมาย…" />
+  </div>
+  <div class="alpha" id="alphaBar"></div>
+  <div class="row" style="margin-top:8px">
+    <label>เสียง (zh-CN): <select id="voice"></select></label>
+    <span class="badge" id="count"></span>
+  </div>
+</header>
+
+<main>
+  <div id="cards" class="cards"></div>
+</main>
+
+<script>
+/* ===== SCRIPT START - NEW VERSION (Load Multiple Datasets from GitHub ONLY) ===== */
+
+// ********************************************
+// * ⚠️ แก้ไขตรงนี้: ใส่รายการชุดคำศัพท์ของคุณ *
+// ********************************************
+const GITHUB_DATASETS = [
+    // [ชุดที่ 1]
+    { key: 'ds1', title: 'HSK-Vocabulary-L4', url: 'https://raw.githubusercontent.com/kongweha/HSK-VOCABULAR-1/refs/heads/main/HSK-Vocabulary-L4.txt' }, 
+    // [ชุดที่ 2]
+    { key: 'ds2', title: 'ชุดคำศัพท์ B', url: 'https://raw.githubusercontent.com/kongweha/HSK-VOCABULAR-1/refs/heads/main/HSK-Vocabulary-L5.txt' },
+    // เพิ่มชุดคำศัพท์อื่นๆ ได้ตามรูปแบบด้านบน (คีย์ต้องไม่ซ้ำกัน)
+];
+
+
+/* ===== DOM & storage keys (ลบ Local Storage Keys ของชุดคำศัพท์ออก) ===== */
+const datasetSel=document.getElementById('dataset');
+const q=document.getElementById('q'), alphaBar=document.getElementById('alphaBar');
+const voiceSel=document.getElementById('voice'), count=document.getElementById('count');
+const cardsEl=document.getElementById('cards');
+
+const LSK_VOICE = 'hsk4_voice';
+const LSK_CHAR_CACHE = 'hanzi_char_json_cache';
+let LAST_SELECTED_KEY = GITHUB_DATASETS[0]?.key || 'ds1';
+
+document.addEventListener('DOMContentLoaded', () => {
+    const importBox = document.getElementById('importBox');
+    if(importBox) importBox.remove();
+});
+
+function setStatus(m){console.log(m||'')}
+
+/* ===== pinyin & initials (ไม่เปลี่ยนแปลง) ===== */
+const toneMap={'ā':'a','á':'a','ǎ':'a','à':'a','ē':'e','é':'e','ě':'e','è':'e','ī':'i','í':'i','ǐ':'i','ō':'o','ó':'o','ǒ':'o','ò':'o','ū':'u','ú':'u','ǔ':'u','ù':'u','ǖ':'v','ǘ':'v','ǚ':'v','ǜ':'v','ü':'v'};
+function deTone(s){return (s||'').replace(/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü]/g,c=>toneMap[c]||c)}
+const INITIALS=['A','O','E','I','U','Ü','B','P','M','F','D','T','N','L','G','K','H','J','Q','X','Zh','Ch','Sh','R','Z','C','S','Y','W'];
+function pinyinInitial(p){
+  const s=deTone((p||'').toLowerCase()).replace(/[^a-züv]/g,'');
+  if(!s) return '#';
+  if(s.startsWith('zh')) return 'Zh';
+  if(s.startsWith('ch')) return 'Ch';
+  if(s.startsWith('sh')) return 'Sh';
+  const ch=s[0];
+  if('aoeiu'.includes(ch)) return ch.toUpperCase();
+  if(ch==='v'||ch==='ü') return 'Ü';
+  if(ch==='y') return 'Y';
+  if(ch==='w') return 'W';
+  return ch.toUpperCase();
+}
+
+/* ===== Voices (ไม่เปลี่ยนแปลง) ===== */
+function loadVoices(){
+  if(!('speechSynthesis'in window))return;
+  const vs=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh'));
+  voiceSel.innerHTML=''; vs.forEach(v=>{const o=document.createElement('option');o.value=v.name;o.textContent=v.name+' ('+v.lang+')';voiceSel.appendChild(o)});
+  const saved=localStorage.getItem(LSK_VOICE); if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) voiceSel.value=saved;
+}
+function getVoice(){const name=voiceSel.value;return speechSynthesis.getVoices().find(v=>v.name===name)||null}
+let ttsReady = false;
+function warmTTS(){
+  if (ttsReady || !('speechSynthesis' in window)) return;
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance('。');
+    u.lang = 'zh-CN'; u.volume = 0; const v=getVoice(); if(v) u.voice=v; u.rate=1.0;
+    speechSynthesis.speak(u);
+    setTimeout(()=> speechSynthesis.cancel(), 60);
+    ttsReady = true;
+  }catch{}
+}
+window.addEventListener('touchstart', warmTTS, { once:true, passive:true });
+window.addEventListener('mousedown' , warmTTS, { once:true });
+
+function speak(text){
+  if (!('speechSynthesis' in window)) { console.error('Browser does not support TTS'); return; }
+  warmTTS();
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text||'');
+    u.lang='zh-CN'; const v=getVoice(); if(v) u.voice=v; u.rate=1.0; u.pitch=1.0;
+    speechSynthesis.speak(u);
+  }catch(e){ console.error(e); }
+}
+if('speechSynthesis'in window){loadVoices(); speechSynthesis.onvoiceschanged=loadVoices}
+voiceSel.addEventListener('change',()=>localStorage.setItem(LSK_VOICE,voiceSel.value))
+
+/* ===== parser (ไม่เปลี่ยนแปลง) ===== */
+function parseHSK(text){
+  const lines=(text||'').split(/\r?\n/); let started=false; const out=[];
+  for(const raw of lines){
+    const s=(raw||'').trim(); if(!s) continue;
+    if(!started){
+      if(/^-{3,}/.test(s)){ started=true; continue; }
+      const parts=s.split('\t'); if(parts.length>=5 && /[\p{Script=Han}]/u.test(parts[0])) started=true; else continue;
+    }
+    const parts=s.split('\t'); if(parts.length<5) continue;
+    const simp=(parts[0]||'').trim(), trad=(parts[1]||'').trim();
+    const pinyinNum=(parts[2]||'').trim();
+    const pinyin=((parts[3]||'').trim()||pinyinNum).replace(/\s+/g,' ').trim();
+    let meaning=(parts[4]||'').trim();
+    meaning=(meaning.split(/CL:|\[[^\]]*\]|abbr\./i)[0]||meaning).replace(/^[\s,;—–-]+|[\s,;—–-]+$/g,'');
+    if(!simp) continue;
+    out.push({simp,trad,pinyin,meaning,alpha:pinyinInitial(pinyin)});
+  }
+  const order=new Map(INITIALS.map((v,i)=>[v,i]));
+  out.sort((a,b)=> (order.get(a.alpha)??999)-(order.get(b.alpha)??999)
+    || deTone(a.pinyin).localeCompare(deTone(b.pinyin))
+    || a.meaning.localeCompare(b.meaning));
+  return out;
+}
+
+/* ===== dataset select (แสดงชื่อชุดทั้งหมดจาก GITHUB_DATASETS) ===== */
+function refreshDatasetSelect(selectKey){
+  datasetSel.innerHTML='';
+  GITHUB_DATASETS.forEach(d=>{
+    const o=document.createElement('option');
+    o.value=d.key;
+    o.textContent=d.title;
+    datasetSel.appendChild(o);
+  });
+  if(selectKey && GITHUB_DATASETS.some(x=>x.key===selectKey)) {
+    datasetSel.value=selectKey;
+  }
+}
+
+/* ===== Initials (pinyin bar) (ไม่เปลี่ยนแปลง) ===== */
+const INITIALS_UI=['A','O','E','B','P','M','F','D','T','N','L','G','K','H','J','Q','X','Zh','Ch','Sh','R','Z','C','S','Y','W'];
+let currentInitial='';
+INITIALS_UI.forEach(L=>{
+  const b=document.createElement('button'); b.textContent=L;
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active'));
+    if(currentInitial===L){ currentInitial=''; render(); return; }
+    currentInitial=L; b.classList.add('active'); render();
+  });
+  alphaBar.appendChild(b);
+});
+
+/* ===== Hanzi Writer data cache (ไม่เปลี่ยนแปลง) ===== */
+function getCharDataCache(){try{return JSON.parse(localStorage.getItem(LSK_CHAR_CACHE)||'{}')}catch{return {}}}
+function setCharDataCache(obj){localStorage.setItem(LSK_CHAR_CACHE,JSON.stringify(obj||{}))}
+async function loadCharJSON(ch){
+  const cache=getCharDataCache(); if(cache[ch]) return cache[ch];
+  const urls=[
+    `https://cdn.jsdelivr.net/npm/hanzi-writer-data@latest/${encodeURIComponent(ch)}.json`,
+    `https://unpkg.com/hanzi-writer-data@latest/${encodeURIComponent(ch)}.json`,
+    `https://cdnjs.cloudflare.com/ajax/libs/hanzi-writer-data/2.0.0/${encodeURIComponent(ch)}.json`
+  ];
+  for(const u of urls){
+    try{ const r=await fetch(u,{cache:'force-cache'}); if(r.ok){ const j=await r.json(); cache[ch]=j; setCharDataCache(cache); return j; } }
+    catch(e){}
+  }
+  throw new Error('no char data');
+}
+
+/* ===== สร้าง writer แบบ “เมื่อเห็นเท่านั้น” (ไม่เปลี่ยนแปลง) ===== */
+async function initOneWriter(el){
+  const char = el.dataset.char;
+  if(!char || el.dataset.inited) return;
+  el.dataset.inited = '1';
+  try{
+    const data = await loadCharJSON(char);
+    const pad = 10;
+    HanziWriter.create(el, char, {
+      width: el.clientWidth||100, height: el.clientHeight||100, padding: pad,
+      showCharacter:false, showOutline:true,
+      strokeAnimationSpeed:1, delayBetweenStrokes:200,
+      charDataLoader: ()=>Promise.resolve(data)
+    });
+  }catch{
+    el.classList.add('fallback'); el.textContent = char;
+  }
+  el.addEventListener('pointerdown', ()=> el.classList.add('pressed'));
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=> el.addEventListener(ev, ()=> el.classList.remove('pressed')));
+  el.addEventListener('click', ()=> speak(char), {passive:true});
+}
+
+const tileObserver = new IntersectionObserver(entries=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){ initOneWriter(e.target); tileObserver.unobserve(e.target); }
+  });
+},{rootMargin:'200px 0px', threshold:0.1});
+
+/* ===== layout (ไม่เปลี่ยนแปลง) ===== */
+function layoutWritersGrid(container, count){
+  const root = getComputedStyle(document.documentElement);
+  const tile = parseFloat(root.getPropertyValue('--tile')) || 160;
+  const gap  = parseFloat(root.getPropertyValue('--gap'))  || 10;
+  const cell = Math.floor((tile - gap) / 2);
+  container.style.setProperty('--cell', cell + 'px');
+  let cols = 2, wrapWidth = tile;
+  if (count === 3){
+    cols = 3; wrapWidth = cell * 3 + gap * 2;
+  }
+  container.style.display='grid';
+  container.style.gridTemplateColumns = `repeat(${cols}, ${cell}px)`;
+  container.style.justifyContent='center';
+  container.style.justifyItems='center';
+  container.style.alignItems='center';
+  container.style.rowGap='20px';
+  const wrap = container.parentElement;
+  if (wrap){ wrap.style.width = wrapWidth + 'px'; wrap.style.marginLeft='auto'; wrap.style.marginRight='auto'; }
+  Array.from(container.children).forEach(c=>{
+    c.style.width = cell+'px'; c.style.height = cell+'px';
+    c.style.gridColumn = ''; c.style.margin = '';
+  });
+  if (count === 1 && container.firstElementChild){
+    container.firstElementChild.style.gridColumn = `1 / span ${cols}`;
+    container.firstElementChild.style.margin = '0 auto';
+  }
+}
+
+/* ===== render (ไม่เปลี่ยนแปลง) ===== */
+let CURRENT=[], VISIBLE=0, PAGE=48;
+function render(){
+  let list=CURRENT;
+  const term=(q.value||'').toLowerCase().trim();
+  if(term){
+    list=list.filter(r =>
+      r.meaning.toLowerCase().includes(term) ||
+      deTone(r.pinyin).toLowerCase().includes(term) ||
+      (r.simp + r.trad).includes(term)
+    );
+  }
+  if(currentInitial) list=list.filter(r=>r.alpha===currentInitial);
+  count.textContent=list.length+' / '+CURRENT.length+' items';
+
+  VISIBLE = Math.min(list.length, PAGE);
+  cardsEl.innerHTML='';
+  const frag=document.createDocumentFragment();
+  for(let i=0;i<VISIBLE;i++){
+    const row=list[i];
+    const card=document.createElement('div'); card.className='card';
+    const chars=(row.simp||'').split('').filter(c=>/\p{Script=Han}/u.test(c));
+    card.innerHTML=`
+      <div class="c-top">
+        <div class="zz">${row.simp}</div>
+        <div class="tt">${row.trad}</div>
+      </div>
+      <div class="writers-wrap"><div class="writers"></div></div>
+      <div class="pinyin-row">
+        <button class="play-main" type="button" data-text="${row.simp}">
+          <span class="pinyin-text">${row.pinyin}</span>
+        </button>
+      </div>
+      <div class="meaning">${row.meaning}</div>`;
+    const grid=card.querySelector('.writers');
+    grid.innerHTML = chars.map(ch=>`<div class="writer" data-char="${ch}" role="button" aria-label="tap"></div>`).join('');
+    layoutWritersGrid(grid, chars.length);
+    frag.appendChild(card);
+  }
+  cardsEl.appendChild(frag);
+  cardsEl.querySelectorAll('.play-main').forEach(btn=>{
+    btn.addEventListener('click', e=> speak(e.currentTarget.dataset.text));
+  });
+  cardsEl.querySelectorAll('.writer').forEach(tile=> tileObserver.observe(tile));
+  window.onscroll = () => {
+    const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
+    if(nearBottom && VISIBLE < list.length){
+      const end = Math.min(list.length, VISIBLE + PAGE);
+      const frag2=document.createDocumentFragment();
+      for(let i=VISIBLE;i<end;i++){
+        const row=list[i];
+        const card=document.createElement('div'); card.className='card';
+        const chars=(row.simp||'').split('').filter(c=>/\p{Script=Han}/u.test(c));
+        card.innerHTML=`
+          <div class="c-top">
+            <div class="zz">${row.simp}</div>
+            <div class="tt">${row.trad}</div>
+          </div>
+          <div class="writers-wrap"><div class="writers"></div></div>
+          <div class="pinyin-row">
+            <button class="play-main" type="button" data-text="${row.simp}">
+              <span class="pinyin-text">${row.pinyin}</span>
+            </button>
+          </div>
+          <div class="meaning">${row.meaning}</div>`;
+        const grid=card.querySelector('.writers');
+        grid.innerHTML = chars.map(ch=>`<div class="writer" data-char="${ch}" role="button" aria-label="tap"></div>`).join('');
+        layoutWritersGrid(grid, chars.length);
+        frag2.appendChild(card);
+      }
+      cardsEl.appendChild(frag2);
+      cardsEl.querySelectorAll('.play-main').forEach(btn=>{
+        if(!btn.dataset.bound){ btn.dataset.bound='1'; btn.addEventListener('click', e=> speak(e.currentTarget.dataset.text)); }
+      });
+      cardsEl.querySelectorAll('.writer').forEach(tile=>{
+        if(!tile.dataset.observe){ tile.dataset.observe='1'; tileObserver.observe(tile); }
+      });
+      VISIBLE = end;
+    }
+  };
+}
+
+/* ===== init (ดึงข้อมูลจาก GitHub เสมอตามชุดที่เลือก) ===== */
+async function loadLiveDataset() {
+    q.value=''; currentInitial=''; document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active'));
+    
+    const selectedKey = datasetSel.value;
+    const dataset = GITHUB_DATASETS.find(d => d.key === selectedKey);
+
+    if (!dataset) {
+        cardsEl.innerHTML = `<div><p>❌ <b>ERROR:</b> ไม่พบชุดคำศัพท์ที่เลือก</p></div>`;
+        return;
+    }
+
+    if (!dataset.url || dataset.url.includes('ใส่ Raw URL ของไฟล์')) {
+         cardsEl.innerHTML = `<div><p>❌ <b>ERROR:</b> กรุณากำหนด Raw URL สำหรับชุดคำศัพท์ "${dataset.title}" ในโค้ดก่อน</p></div>`;
+        return;
+    }
+
+    cardsEl.innerHTML = `<div><p>⏳ <b>Loading:</b> กำลังดึงชุดคำศัพท์ "${dataset.title}" จาก GitHub...</p></div>`;
+    
+    try {
+        // ใช้ cache: "no-store" เพื่อให้เบราว์เซอร์ไม่ใช้แคชของไฟล์ TXT
+        const response = await fetch(dataset.url, { cache: "no-store" }); 
+        if (!response.ok) {
+            cardsEl.innerHTML = `<div><p>❌ <b>ERROR:</b> ไม่สามารถดึงไฟล์จาก GitHub ได้ (Status: ${response.status}). กรุณาตรวจสอบ Raw URL ว่าถูกต้องและเป็นไฟล์สาธารณะหรือไม่</p></div>`;
+            return;
+        }
+        const text = await response.text();
+        if (!text.trim()) {
+            cardsEl.innerHTML = `<div><p>⚠️ <b>WARNING:</b> ไฟล์ที่ดึงมาจาก GitHub ว่างเปล่า</p></div>`;
+            return;
+        }
+
+        CURRENT = parseHSK(text);
+        render();
+        LAST_SELECTED_KEY = selectedKey;
+        localStorage.setItem('hsk4_last_selected_live', selectedKey);
+    } catch (e) {
+        cardsEl.innerHTML = `<div><p>❌ <b>FETCH ERROR:</b> เกิดข้อผิดพลาดในการเชื่อมต่อ/ดึงข้อมูล</p></div>`;
+        console.error('Live load failed:', e);
+    }
+}
+
+// Event Listeners สำหรับ Filter/Search และ Dataset Select
+q.addEventListener('input', render);
+datasetSel.addEventListener('change', loadLiveDataset);
+
+(function init(){
+    // โหลดชุดคำศัพท์ที่เคยถูกเลือกไว้ล่าสุด หรือชุดแรก
+    const lastKey = localStorage.getItem('hsk4_last_selected_live') || GITHUB_DATASETS[0]?.key;
+    
+    refreshDatasetSelect(lastKey);
+    
+    // โหลดข้อมูลชุดแรก
+    loadLiveDataset();
+
+    // ส่วน TTS/Voice ยังคงใช้ Local Storage
+    if('speechSynthesis' in window){loadVoices(); speechSynthesis.onvoiceschanged=loadVoices}
+})();
+/* ===== SCRIPT END ===== */
+</script>
+</body>
+</html>
