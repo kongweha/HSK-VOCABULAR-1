@@ -20,7 +20,10 @@
 
   main{padding:var(--pad)}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
-  .card{background:#fff;border:1px solid #eee;border-radius:18px;padding:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .card{
+    background:#fff;border:1px solid #eee;border-radius:18px;padding:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.04);
+    position: relative; /* เพิ่มเพื่อให้ badge-order อ้างอิงได้ */
+  }
   .c-top{display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:8px}
   .zz{font-size:40px;line-height:1}
   .tt{font-size:26px;color:#666}
@@ -54,6 +57,15 @@
 
   .meaning{margin-top:8px;color:#333;font-size:16px;text-align:center}
   .badge{font-size:12px;color:#666}
+  
+  /* NEW: Style สำหรับเลขลำดับ (อยู่มุมขวาบน) */
+  .badge-order{
+    position: absolute;
+    top: var(--card); /* จัดตำแหน่งให้เข้ากับ padding ด้านบน */
+    right: var(--card); /* จัดตำแหน่งให้เข้ากับ padding ด้านขวา */
+    font-size: 14px;
+    color: #aaa;
+  }
 </style>
 </head>
 <body>
@@ -127,12 +139,49 @@ function pinyinInitial(p){
   return ch.toUpperCase();
 }
 
-/* ===== Voices (ไม่เปลี่ยนแปลง) ===== */
+/* ===== Voices (แก้ไข: พยายามเลือกเสียงชายหญิง) ===== */
 function loadVoices(){
   if(!('speechSynthesis'in window))return;
-  const vs=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh'));
-  voiceSel.innerHTML=''; vs.forEach(v=>{const o=document.createElement('option');o.value=v.name;o.textContent=v.name+' ('+v.lang+')';voiceSel.appendChild(o)});
-  const saved=localStorage.getItem(LSK_VOICE); if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) voiceSel.value=saved;
+  const allVoices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh'));
+  
+  // 1. ลองหาเสียงที่มีชื่อบ่งบอกว่าเป็น 'Standard' หรือ 'Male'/'Female' 
+  //    (เพื่อให้มีโอกาสได้เสียงที่ดูเป็นหลัก/เริ่มต้น)
+  let preferredVoices = allVoices.filter(v => 
+    (v.name.includes('Standard') || v.name.includes('Male') || v.name.includes('Female'))
+  );
+
+  // 2. ถ้ามี preferredVoices มากกว่า 2 เสียง ให้เลือก 2 เสียงแรก (ชาย-หญิง)
+  if (preferredVoices.length > 2) {
+      // พยายามเลือกเสียงที่มีคำว่า 'Female' และ 'Male' หรือ 'Standard' 2 เสียงแรก
+      const femaleVoice = preferredVoices.find(v => v.name.includes('Female') || v.name.includes('Standard'));
+      const maleVoice   = preferredVoices.find(v => v.name.includes('Male'));
+      preferredVoices = [];
+      if (femaleVoice) preferredVoices.push(femaleVoice);
+      if (maleVoice && (maleVoice.name !== (femaleVoice?.name))) preferredVoices.push(maleVoice);
+      // ถ้ายังไม่ครบ 2 ให้เติมเสียงอื่นที่เหลือ
+      preferredVoices = Array.from(new Set([...preferredVoices, ...preferredVoices.slice(0, 2)]));
+  } else if (preferredVoices.length === 0 && allVoices.length > 0) {
+      // 3. ถ้าไม่พบเสียงที่ต้องการเลย ให้เลือก 2 เสียงแรกที่ระบบมี
+      preferredVoices = allVoices.slice(0, 2);
+  }
+  
+  // 4. ถ้ามีเสียงเดียว (preferredVoices[0]) ให้เพิ่มเสียงอื่นเข้ามาอีกเสียง (ถ้ามี)
+  if (preferredVoices.length === 1 && allVoices.length > 1) {
+      const otherVoice = allVoices.find(v => v.name !== preferredVoices[0].name);
+      if (otherVoice) preferredVoices.push(otherVoice);
+  }
+
+  // 5. แสดงผลใน Select (สูงสุด 2 เสียง)
+  voiceSel.innerHTML=''; 
+  preferredVoices.forEach(v=>{
+    const o=document.createElement('option');
+    o.value=v.name;
+    o.textContent=v.name+' ('+v.lang+')';
+    voiceSel.appendChild(o);
+  });
+  
+  const saved=localStorage.getItem(LSK_VOICE); 
+  if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) voiceSel.value=saved;
 }
 function getVoice(){const name=voiceSel.value;return speechSynthesis.getVoices().find(v=>v.name===name)||null}
 let ttsReady = false;
@@ -289,7 +338,7 @@ function layoutWritersGrid(container, count){
   }
 }
 
-/* ===== render (ไม่เปลี่ยนแปลง) ===== */
+/* ===== render (แก้ไข: เพิ่มเลขลำดับไปอยู่ขวาบน) ===== */
 let CURRENT=[], VISIBLE=0, PAGE=48;
 function render(){
   let list=CURRENT;
@@ -322,7 +371,8 @@ function render(){
           <span class="pinyin-text">${row.pinyin}</span>
         </button>
       </div>
-      <div class="meaning">${row.meaning}</div>`;
+      <div class="meaning">${row.meaning}</div>
+      <div class="badge-order">${i + 1}</div>`;
     const grid=card.querySelector('.writers');
     grid.innerHTML = chars.map(ch=>`<div class="writer" data-char="${ch}" role="button" aria-label="tap"></div>`).join('');
     layoutWritersGrid(grid, chars.length);
@@ -353,7 +403,8 @@ function render(){
               <span class="pinyin-text">${row.pinyin}</span>
             </button>
           </div>
-          <div class="meaning">${row.meaning}</div>`;
+          <div class="meaning">${row.meaning}</div>
+          <div class="badge-order">${i + 1}</div>`;
         const grid=card.querySelector('.writers');
         grid.innerHTML = chars.map(ch=>`<div class="writer" data-char="${ch}" role="button" aria-label="tap"></div>`).join('');
         layoutWritersGrid(grid, chars.length);
@@ -434,4 +485,3 @@ datasetSel.addEventListener('change', loadLiveDataset);
 </body>
 
 </html>
-
