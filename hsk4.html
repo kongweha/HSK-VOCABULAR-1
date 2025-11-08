@@ -139,39 +139,40 @@ function pinyinInitial(p){
   return ch.toUpperCase();
 }
 
-/* ===== Voices (แก้ไข: พยายามเลือกเสียงชายหญิง) ===== */
+/* ===== Voices (แก้ไข: ปรับปรุงการเลือกเสียง) ===== */
 function loadVoices(){
   if(!('speechSynthesis'in window))return;
   const allVoices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh'));
   
   // 1. ลองหาเสียงที่มีชื่อบ่งบอกว่าเป็น 'Standard' หรือ 'Male'/'Female' 
-  //    (เพื่อให้มีโอกาสได้เสียงที่ดูเป็นหลัก/เริ่มต้น)
   let preferredVoices = allVoices.filter(v => 
     (v.name.includes('Standard') || v.name.includes('Male') || v.name.includes('Female'))
   );
 
-  // 2. ถ้ามี preferredVoices มากกว่า 2 เสียง ให้เลือก 2 เสียงแรก (ชาย-หญิง)
-  if (preferredVoices.length > 2) {
-      // พยายามเลือกเสียงที่มีคำว่า 'Female' และ 'Male' หรือ 'Standard' 2 เสียงแรก
-      const femaleVoice = preferredVoices.find(v => v.name.includes('Female') || v.name.includes('Standard'));
-      const maleVoice   = preferredVoices.find(v => v.name.includes('Male'));
-      preferredVoices = [];
-      if (femaleVoice) preferredVoices.push(femaleVoice);
-      if (maleVoice && (maleVoice.name !== (femaleVoice?.name))) preferredVoices.push(maleVoice);
-      // ถ้ายังไม่ครบ 2 ให้เติมเสียงอื่นที่เหลือ
-      preferredVoices = Array.from(new Set([...preferredVoices, ...preferredVoices.slice(0, 2)]));
-  } else if (preferredVoices.length === 0 && allVoices.length > 0) {
-      // 3. ถ้าไม่พบเสียงที่ต้องการเลย ให้เลือก 2 เสียงแรกที่ระบบมี
-      preferredVoices = allVoices.slice(0, 2);
+  // 2. ถ้ามี preferredVoices น้อยกว่า 2 ให้เติมเสียงอื่นเข้ามา
+  if (preferredVoices.length < 2) {
+      // เติม 2 เสียงแรกที่ระบบมี (โดยไม่ซ้ำกับที่เลือกไว้แล้ว)
+      allVoices.forEach(v => {
+          if (!preferredVoices.some(pv => pv.name === v.name)) {
+              preferredVoices.push(v);
+          }
+      });
+      // ตัดเหลือแค่ 2 เสียงแรก
+      preferredVoices = preferredVoices.slice(0, 2);
+  } else if (preferredVoices.length > 2) {
+      // ถ้ามีเยอะกว่า 2 ให้พยายามเลือกเสียง Male/Female/Standard ที่ไม่ซ้ำกัน 2 เสียงแรก
+      const uniqueVoices = [];
+      const names = new Set();
+      preferredVoices.forEach(v => {
+          if (!names.has(v.name) && uniqueVoices.length < 2) {
+              names.add(v.name);
+              uniqueVoices.push(v);
+          }
+      });
+      preferredVoices = uniqueVoices;
   }
   
-  // 4. ถ้ามีเสียงเดียว (preferredVoices[0]) ให้เพิ่มเสียงอื่นเข้ามาอีกเสียง (ถ้ามี)
-  if (preferredVoices.length === 1 && allVoices.length > 1) {
-      const otherVoice = allVoices.find(v => v.name !== preferredVoices[0].name);
-      if (otherVoice) preferredVoices.push(otherVoice);
-  }
-
-  // 5. แสดงผลใน Select (สูงสุด 2 เสียง)
+  // 3. แสดงผลใน Select
   voiceSel.innerHTML=''; 
   preferredVoices.forEach(v=>{
     const o=document.createElement('option');
@@ -190,7 +191,7 @@ function warmTTS(){
   try{
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance('。');
-    u.lang = 'zh-CN'; u.volume = 0; const v=getVoice(); if(v) u.voice=v; u.rate=1.0;
+    u.lang = 'zh-CN'; const v=getVoice(); if(v) u.voice=v; u.volume = 0; u.rate=1.0;
     speechSynthesis.speak(u);
     setTimeout(()=> speechSynthesis.cancel(), 60);
     ttsReady = true;
@@ -205,7 +206,11 @@ function speak(text){
   try{
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text||'');
-    u.lang='zh-CN'; const v=getVoice(); if(v) u.voice=v; u.rate=1.0; u.pitch=1.0;
+    u.lang='zh-CN'; 
+    const v=getVoice(); 
+    // การแก้ไข: ใช้ u.voice=v หาก v ไม่ใช่ null (เพื่อให้ระบบเลือก Default หาก Voice ที่เลือกไว้หาไม่เจอ)
+    if(v) u.voice=v; 
+    u.rate=1.0; u.pitch=1.0;
     speechSynthesis.speak(u);
   }catch(e){ console.error(e); }
 }
