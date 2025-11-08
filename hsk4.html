@@ -225,54 +225,38 @@ function pinyinInitial(p){
   return ch.toUpperCase();
 }
 
-/* ===== Voices (บังคับเลือก 'tingting') ===== */
+/* ===== Voices (แสดงเสียงทั้งหมด, ไม่ซ่อน) [แก้ไข] ===== */
 function loadVoices(){
   if(!('speechSynthesis'in window))return;
-  const allVoices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh'));
+  // กรองเสียงทั้งหมดที่เป็นภาษาจีน
+  const allVoices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh')); 
   
-  const preferredVoices = [];
-  const names = new Set();
-  
-  // 1. บังคับเลือก 'tingting' เป็นอันดับแรก
-  const tingting = allVoices.find(v => v.name.toLowerCase().includes('tingting'));
-  if (tingting) {
-      preferredVoices.push(tingting);
-      names.add(tingting.name);
-  }
-  
-  // 2. ถ้ายังไม่ครบ 2 ให้เลือกเสียงอื่นเพิ่ม (เป็นตัวสำรองเผื่อ tingting ใช้ไม่ได้)
-  allVoices.forEach(v => {
-      if (!names.has(v.name) && preferredVoices.length < 2) {
-          preferredVoices.push(v);
-          names.add(v.name);
-      }
-  });
-
-  // 3. แสดงผลใน Select
   voiceSel.innerHTML=''; 
-  preferredVoices.forEach(v=>{
+  allVoices.forEach(v=>{
     const o=document.createElement('option');
     o.value=v.name;
-    o.textContent=(v.name.toLowerCase().includes('tingting') ? 'Ting-Ting' : v.name)+' ('+v.lang+')';
+    // ปรับชื่อเสียงให้เข้าใจง่ายขึ้น
+    o.textContent=(v.name.toLowerCase().includes('tingting') ? 'Ting-Ting (Standard)' : v.name)+' ('+v.lang+')'; 
     voiceSel.appendChild(o);
   });
   
   const saved=localStorage.getItem(LSK_VOICE); 
-  // หากมี 'tingting' ให้เลือก tingting เสมอ
-  if (tingting && Array.from(voiceSel.options).some(o => o.value === tingting.name)) {
+  const tingting = allVoices.find(v => v.name.toLowerCase().includes('tingting'));
+  
+  // เลือกเสียงที่บันทึกไว้
+  if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) {
+      voiceSel.value = saved;
+  } 
+  // หากไม่มีเสียงที่บันทึกไว้ ให้เลือก tingting เป็น default
+  else if (tingting && Array.from(voiceSel.options).some(o => o.value === tingting.name)) {
       voiceSel.value = tingting.name;
-  } else if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) {
-      voiceSel.value=saved;
+  } else if (allVoices.length > 0) {
+      voiceSel.value = allVoices[0].name; // หรือเลือกเสียงแรก
   }
 
-  // ถ้ามี tingting ตัวเดียว ให้ซ่อน select ให้เหลือแค่ชื่อเสียง
-  if (preferredVoices.length === 1 && tingting) {
-      voiceSel.style.minWidth = '200px'; 
-      voiceSel.style.pointerEvents = 'none'; 
-  } else {
-      voiceSel.style.minWidth = '';
-      voiceSel.style.pointerEvents = 'auto';
-  }
+  // ลบโค้ดที่ซ่อน select ออก เพื่อให้ผู้ใช้เลือกได้ตามต้องการ
+  voiceSel.style.minWidth = '';
+  voiceSel.style.pointerEvents = 'auto';
 }
 
 function getVoice(){const name=voiceSel.value;return speechSynthesis.getVoices().find(v=>v.name===name)||null}
@@ -308,25 +292,35 @@ if('speechSynthesis'in window){loadVoices(); speechSynthesis.onvoiceschanged=loa
 voiceSel.addEventListener('change',()=>localStorage.setItem(LSK_VOICE,voiceSel.value))
 
 
-/* ===== Scroll Logic (Header Collapse & Scroll Top) ===== */
+/* ===== Scroll Logic (Header Collapse & Scroll Top) [แก้ไข] ===== */
 let isHeaderShrunk = false;
 function handleScroll(){
     const currentScroll = window.scrollY || document.documentElement.scrollTop;
+    
+    // NEW LOGIC: ป้องกันการย่อ Header บนหน้าจอขนาดเล็ก (เช่น โทรศัพท์)
+    // ถ้าหน้าจอกว้างน้อยกว่าหรือเท่ากับ 768px จะยกเลิกการย่อ Header
+    const isMobile = window.innerWidth <= 768; 
 
     // Header Shrinking/Collapsing
-    if (currentScroll > 60) {
+    if (isMobile) {
+        // บนมือถือ ให้ Header อยู่ในสถานะขยายเสมอ
+        mainHeader.classList.remove('shrunk');
+        isHeaderShrunk = false;
+    } else if (currentScroll > 60) {
+        // บนเดสก์ท็อป ให้ย่อเมื่อ scroll
         if (!isHeaderShrunk) {
             mainHeader.classList.add('shrunk');
             isHeaderShrunk = true;
         }
     } else {
+        // บนเดสก์ท็อป ให้ขยายเมื่ออยู่ด้านบน
         if (isHeaderShrunk) {
             mainHeader.classList.remove('shrunk');
             isHeaderShrunk = false;
         }
     }
 
-    // Scroll-to-Top Button visibility
+    // Scroll-to-Top Button visibility (ยังคงทำงานเหมือนเดิม)
     if (currentScroll > 200) {
         scrollBtn.style.display = 'block';
     } else {
@@ -335,6 +329,7 @@ function handleScroll(){
 }
 
 window.addEventListener('scroll', handleScroll, { passive: true });
+window.addEventListener('resize', handleScroll); // เพิ่ม listener สำหรับการตรวจสอบเมื่อเปลี่ยนขนาดหน้าจอ
 scrollBtn.addEventListener('click', () => {
     window.scrollTo({
         top: 0,
