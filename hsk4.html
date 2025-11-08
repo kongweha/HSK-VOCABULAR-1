@@ -192,7 +192,7 @@
 <button id="scrollToTop" title="Go to top">▲</button>
 
 <script>
-/* ===== SCRIPT START - NEW VERSION (Final - All Features Included) ===== */
+/* ===== SCRIPT START - NEW VERSION (Final - Item Count Display Fixed) ===== */
 
 // ********************************************
 // * ⚠️ แก้ไขตรงนี้: ใส่รายการชุดคำศัพท์ของคุณ *
@@ -329,7 +329,7 @@ if('speechSynthesis'in window){loadVoices(); speechSynthesis.onvoiceschanged=loa
 voiceSel.addEventListener('change',()=>localStorage.setItem(LSK_VOICE,voiceSel.value))
 
 
-/* ===== Scroll Logic (Header Collapse & Scroll Top) (ปรับปรุง) ===== */
+/* ===== Scroll Logic (Header Collapse & Scroll Top) (ไม่เปลี่ยนแปลง) ===== */
 let isHeaderShrunk = false;
 function handleScroll(){
     const currentScroll = window.scrollY || document.documentElement.scrollTop;
@@ -682,6 +682,7 @@ function render(){
       mainHeader.classList.remove('locked-no-shrink');
   }
 
+  // NEW: อัพเดต Count รวม
   count.textContent=list.length+' / '+CURRENT.length+' items';
 
   VISIBLE = Math.min(list.length, PAGE);
