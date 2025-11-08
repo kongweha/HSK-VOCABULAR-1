@@ -169,7 +169,7 @@
 <button id="scrollToTop" title="Go to top">▲</button>
 
 <script>
-/* ===== SCRIPT START - NEW VERSION (Final - Header Collapse Fixed with 1-word Condition) ===== */
+/* ===== SCRIPT START - NEW VERSION (Final - Added "All" Alphabet Filter) ===== */
 
 // ********************************************
 // * ⚠️ แก้ไขตรงนี้: ใส่รายการชุดคำศัพท์ของคุณ *
@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function setStatus(m){console.log(m||'')}
 
 /* ===== pinyin & initials (ไม่เปลี่ยนแปลง) ===== */
-const toneMap={'ā':'a','á':'a','ǎ':'a','à':'a','ē':'e','é':'e','ě':'e','è':'e','ī':'i','í':'i','ǐ':'i','ō':'o','ó':'o','ǒ':'o','ò':'o','ū':'u','ú':'u','ǔ':'u','ù':'u','ǖ':'v','ǘ':'v','ǚ':'v','ǜ':'v','ü':'v'};
+const toneMap={'ā':'a','á':'a','ǎ':'a','à':'a','ē':'e','é':'e','ě':'e','è':'e','ī':'i','í':'i','ǐ':'i','i':'i','ō':'o','ó':'o','ǒ':'o','ò':'o','ū':'u','ú':'u','ǔ':'u','ù':'u','ǖ':'v','ǘ':'v','ǚ':'v','ǜ':'v','ü':'v'};
 function deTone(s){return (s||'').replace(/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü]/g,c=>toneMap[c]||c)}
 const INITIALS=['A','O','E','I','U','Ü','B','P','M','F','D','T','N','L','G','K','H','J','Q','X','Zh','Ch','Sh','R','Z','C','S','Y','W'];
 function pinyinInitial(p){
@@ -308,7 +308,7 @@ if('speechSynthesis'in window){loadVoices(); speechSynthesis.onvoiceschanged=loa
 voiceSel.addEventListener('change',()=>localStorage.setItem(LSK_VOICE,voiceSel.value))
 
 
-/* ===== Scroll Logic (Header Collapse & Scroll Top) (แก้ไข Header Shrink) ===== */
+/* ===== Scroll Logic (Header Collapse & Scroll Top) ===== */
 let isHeaderShrunk = false;
 function handleScroll(){
     const currentScroll = window.scrollY || document.documentElement.scrollTop;
@@ -415,22 +415,40 @@ function refreshDatasetSelect(selectKey){
   }
 }
 
-/* ===== Initials (pinyin bar) (แก้ไข: เพิ่ม scroll-to-top เมื่อกด) ===== */
-const INITIALS_UI=['A','O','E','B','P','M','F','D','T','N','L','G','K','H','J','Q','X','Zh','Ch','Sh','R','Z','C','S','Y','W'];
+/* ===== Initials (pinyin bar) (แก้ไข: เพิ่ม "All" และ Scroll-to-top) ===== */
+// NEW: เพิ่ม 'All' เข้าไปในรายการ
+const INITIALS_UI=['All','A','O','E','B','P','M','F','D','T','N','L','G','K','H','J','Q','X','Zh','Ch','Sh','R','Z','C','S','Y','W'];
 let currentInitial='';
+alphaBar.innerHTML = ''; // Clear previous buttons
 INITIALS_UI.forEach(L=>{
-  const b=document.createElement('button'); b.textContent=L;
+  const b=document.createElement('button'); 
+  b.textContent=L;
+  // NEW: กำหนดให้ 'All' เป็น active เริ่มต้น
+  if (L === 'All' && !currentInitial) {
+      b.classList.add('active');
+      currentInitial = 'All'; 
+  }
+
   b.addEventListener('click',()=>{
     document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active'));
     
     // Scroll to top when filter is pressed
     window.scrollTo({ top: 0, behavior: 'smooth' }); 
     
-    if(currentInitial===L){ currentInitial=''; render(); return; }
-    currentInitial=L; b.classList.add('active'); render();
+    if(currentInitial===L && L !== 'All'){ // หากกดปุ่มเดิมซ้ำ (ยกเว้น All)
+        currentInitial='All'; // กลับไปที่ All
+        document.querySelector('.alpha button').classList.add('active');
+        render(); 
+        return; 
+    }
+    
+    currentInitial=L; 
+    b.classList.add('active'); 
+    render();
   });
   alphaBar.appendChild(b);
 });
+
 
 /* ===== Hanzi Writer data cache & initOneWriter & layout (ไม่เปลี่ยนแปลง) ===== */
 function getCharDataCache(){try{return JSON.parse(localStorage.getItem(LSK_CHAR_CACHE)||'{}')}catch{return {}}}
@@ -556,7 +574,7 @@ function loadMoreCards(list){
 }
 
 
-/* ===== render (แก้ไข: ล็อก Header เมื่อมีคำเดียว) ===== */
+/* ===== render (แก้ไข: ล็อก Header เมื่อมีคำเดียว และปรับ Logic การกรอง) ===== */
 let CURRENT=[], VISIBLE=0, PAGE=48;
 let scrollDebounceTimer = null; 
 function render(){
@@ -565,8 +583,8 @@ function render(){
 
   // กรองตามคำค้นหา
   if(term){
-    currentInitial = ''; 
-    document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active')); 
+    currentInitial = ''; // ล้าง Initial Filter
+    document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active')); // ล้างปุ่ม active
     
     const searchNoSpace = term.replace(/\s+/g, '');
     
@@ -578,9 +596,13 @@ function render(){
         
         return false;
     });
-  } else if(currentInitial) {
+  } 
+  
+  // กรองตาม Initial Filter (เฉพาะเมื่อไม่มีคำค้นหา และ initial ไม่ใช่ 'All')
+  else if(currentInitial && currentInitial !== 'All') {
     list=list.filter(r=>r.alpha===currentInitial);
   }
+  // ถ้า currentInitial เป็น 'All' และไม่มีคำค้นหา list ก็คือ CURRENT ทั้งหมด (ไม่ต้องกรอง)
   
   // NEW: Logic ล็อก Header
   if (list.length <= 1) {
@@ -663,7 +685,7 @@ window.addEventListener('scroll', () => {
                     if ((r.simp + r.trad).startsWith(term)) return true;
                     return false;
                 });
-            } else if(currentInitial) {
+            } else if(currentInitial && currentInitial !== 'All') { // NEW: ใช้เงื่อนไข 'All'
                 list=list.filter(r=>r.alpha===currentInitial);
             }
             
@@ -677,7 +699,8 @@ window.addEventListener('scroll', () => {
 
 /* ===== loadLiveDataset, event listeners, init (ไม่เปลี่ยนแปลง) ===== */
 async function loadLiveDataset() {
-    q.value=''; currentInitial=''; document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active'));
+    q.value=''; currentInitial='All'; // กำหนดให้เริ่มต้นเป็น 'All'
+    document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active'));
     
     const selectedKey = datasetSel.value;
     const dataset = GITHUB_DATASETS.find(d => d.key === selectedKey);
