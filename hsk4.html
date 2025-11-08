@@ -11,8 +11,10 @@
   
   header{
     position:sticky;top:0;background:#fff;border-bottom:1px solid #eee;padding:var(--pad);z-index:10;
+    /* แก้ไข: เพิ่ม transition ให้กับ padding และ box-shadow */
     transition: padding 0.2s ease, box-shadow 0.2s ease;
     box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    overflow: visible; 
   }
   /* Style สำหรับ Header ที่ย่อส่วน (เมื่อใส่คลาส .shrunk) */
   header.shrunk{
@@ -20,35 +22,52 @@
     padding-bottom: 8px;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,.1);
   }
-  /* ซ่อนทุกอย่างที่ไม่อยู่ใน alpha/search bar เมื่อย่อส่วน */
+  /* ซ่อนทุกอย่างที่ไม่อยู่ใน alphabet/search bar เมื่อย่อส่วน */
   header.shrunk .header-hide{
-    display: none !important;
+    /* ใช้ opacity/visibility/margin/padding เพื่อให้ transition ทำงานนุ่มนวล */
+    opacity: 0;
+    visibility: hidden;
+    height: 0;
+    margin-top: 0 !important; 
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+    font-size: 0; /* ลดขนาด font เพื่อช่วยในการย่อ */
+    transition: opacity 0.2s ease, visibility 0.2s ease, height 0.2s ease, margin 0.2s ease, padding 0.2s ease, font-size 0.2s ease;
   }
   
   h1{margin:0 0 8px;font-size:18px}
   .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  
+  /* Style สำหรับ Input/Select/Button */
   input[type="search"],select,button{padding:12px 14px;border-radius:12px;border:1px solid #ddd;background:#fff;font-size:17px;min-height:44px}
   
-  /* Style สำหรับ Checkbox ใน Header (ไม่มีแล้วแต่คง style อื่นไว้) */
-  .header-checkbox-label {
+  /* Style สำหรับ Remember Button */
+  .remember-filter-wrap {
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: 14px;
-    color: #333;
   }
-  .header-checkbox-label input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    min-height: 18px;
-    margin: 0;
-    padding: 0;
+  .remember-filter-wrap button {
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid #ddd;
+    background: #fff;
+    font-size: 17px;
+    min-height: 44px;
     cursor: pointer;
+    line-height: 1;
+    min-width: unset; 
+    white-space: nowrap;
+  }
+  .remember-filter-wrap button.active {
+    background: #4CAF50; /* Green */
+    color: #fff;
+    border-color: #4CAF50;
   }
 
   .alpha{display:flex;gap:6px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:6px}
   .alpha::-webkit-scrollbar{display:none}
-  .alpha button{flex:0 0 auto;min-width:44px;min-height:40px;border-radius:10px;border:1px solid #ddd;background:#fff}
+  .alpha button{flex:0 0 auto;min-width:44px;min-height:40px;border-radius:10px;border:1px solid #ddd;background:#fff;text-transform: lowercase;}
+  .alpha button[data-initial="All"]{text-transform: capitalize;} /* All เป็นพิมพ์ใหญ่ตัวแรก */
   .alpha button.active{background:#111;color:#fff}
 
   main{padding:var(--pad)}
@@ -151,7 +170,11 @@
   
   <div class="row header-hide" style="margin-bottom:8px">
     <label>Dataset: <select id="dataset"></select></label>
-    <input id="q" type="search" placeholder="ค้นหา: อักษรจีน / pinyin…" />
+    <input id="q" type="search" placeholder="ค้นหา: อักษรจีน / pinyin..." />
+    
+    <div class="remember-filter-wrap">
+      <button id="rememberFilterBtn">Remember</button>
+    </div>
   </div>
   
   <div class="alpha" id="alphaBar"></div>
@@ -169,7 +192,7 @@
 <button id="scrollToTop" title="Go to top">▲</button>
 
 <script>
-/* ===== SCRIPT START - NEW VERSION (Final - Added "All" Alphabet Filter) ===== */
+/* ===== SCRIPT START - NEW VERSION (Final - All Features Included) ===== */
 
 // ********************************************
 // * ⚠️ แก้ไขตรงนี้: ใส่รายการชุดคำศัพท์ของคุณ *
@@ -193,12 +216,15 @@ const voiceSel=document.getElementById('voice'), count=document.getElementById('
 const cardsEl=document.getElementById('cards');
 const mainHeader = document.getElementById('mainHeader'); 
 const scrollBtn = document.getElementById('scrollToTop');  
+// Remember Filter DOM elements
+const rememberFilterBtn = document.getElementById('rememberFilterBtn');
 
 const LSK_VOICE = 'hsk4_voice';
 const LSK_CHAR_CACHE = 'hanzi_char_json_cache';
 const LSK_GREEN_BG_PREFIX = 'hsk4_green_bg_'; 
 const LSK_GLOBAL_GREEN_BG = 'hsk4_global_green_bg'; 
 let LAST_SELECTED_KEY = GITHUB_DATASETS[0]?.key || 'ds1';
+let isRememberFilterActive = false; 
 
 document.addEventListener('DOMContentLoaded', () => {
     const importBox = document.getElementById('importBox');
@@ -208,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function setStatus(m){console.log(m||'')}
 
 /* ===== pinyin & initials (ไม่เปลี่ยนแปลง) ===== */
-const toneMap={'ā':'a','á':'a','ǎ':'a','à':'a','ē':'e','é':'e','ě':'e','è':'e','ī':'i','í':'i','ǐ':'i','i':'i','ō':'o','ó':'o','ǒ':'o','ò':'o','ū':'u','ú':'u','ǔ':'u','ù':'u','ǖ':'v','ǘ':'v','ǚ':'v','ǜ':'v','ü':'v'};
+const toneMap={'ā':'a','á':'a','ǎ':'a','à':'a','ē':'e','é':'e','ě':'e','è':'e','ī':'i','í':'i','ǐ':'i','ō':'o','ó':'o','ǒ':'o','ò':'o','ū':'u','ú':'u','ǔ':'u','ù':'u','ǖ':'v','ǘ':'v','ǚ':'v','ǜ':'v','ü':'v'};
 function deTone(s){return (s||'').replace(/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü]/g,c=>toneMap[c]||c)}
 const INITIALS=['A','O','E','I','U','Ü','B','P','M','F','D','T','N','L','G','K','H','J','Q','X','Zh','Ch','Sh','R','Z','C','S','Y','W'];
 function pinyinInitial(p){
@@ -225,7 +251,7 @@ function pinyinInitial(p){
   return ch.toUpperCase();
 }
 
-/* ===== Voices (บังคับเลือก 'tingting') ===== */
+/* ===== Voices (บังคับเลือก 'tingting') (ไม่เปลี่ยนแปลง) ===== */
 function loadVoices(){
   if(!('speechSynthesis'in window))return;
   const allVoices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh'));
@@ -233,14 +259,12 @@ function loadVoices(){
   const preferredVoices = [];
   const names = new Set();
   
-  // 1. บังคับเลือก 'tingting' เป็นอันดับแรก
   const tingting = allVoices.find(v => v.name.toLowerCase().includes('tingting'));
   if (tingting) {
       preferredVoices.push(tingting);
       names.add(tingting.name);
   }
   
-  // 2. ถ้ายังไม่ครบ 2 ให้เลือกเสียงอื่นเพิ่ม (เป็นตัวสำรองเผื่อ tingting ใช้ไม่ได้)
   allVoices.forEach(v => {
       if (!names.has(v.name) && preferredVoices.length < 2) {
           preferredVoices.push(v);
@@ -248,7 +272,6 @@ function loadVoices(){
       }
   });
 
-  // 3. แสดงผลใน Select
   voiceSel.innerHTML=''; 
   preferredVoices.forEach(v=>{
     const o=document.createElement('option');
@@ -258,14 +281,12 @@ function loadVoices(){
   });
   
   const saved=localStorage.getItem(LSK_VOICE); 
-  // หากมี 'tingting' ให้เลือก tingting เสมอ
   if (tingting && Array.from(voiceSel.options).some(o => o.value === tingting.name)) {
       voiceSel.value = tingting.name;
   } else if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) {
       voiceSel.value=saved;
   }
 
-  // ถ้ามี tingting ตัวเดียว ให้ซ่อน select ให้เหลือแค่ชื่อเสียง
   if (preferredVoices.length === 1 && tingting) {
       voiceSel.style.minWidth = '200px'; 
       voiceSel.style.pointerEvents = 'none'; 
@@ -308,13 +329,11 @@ if('speechSynthesis'in window){loadVoices(); speechSynthesis.onvoiceschanged=loa
 voiceSel.addEventListener('change',()=>localStorage.setItem(LSK_VOICE,voiceSel.value))
 
 
-/* ===== Scroll Logic (Header Collapse & Scroll Top) ===== */
+/* ===== Scroll Logic (Header Collapse & Scroll Top) (ปรับปรุง) ===== */
 let isHeaderShrunk = false;
 function handleScroll(){
     const currentScroll = window.scrollY || document.documentElement.scrollTop;
 
-    // Header Shrinking/Collapsing
-    // NEW: Header จะย่อได้ก็ต่อเมื่อไม่ได้ถูกล็อค (mainHeader ไม่ได้มีคลาส locked-no-shrink)
     const isLocked = mainHeader.classList.contains('locked-no-shrink');
     
     if (currentScroll > 60) {
@@ -329,7 +348,6 @@ function handleScroll(){
         }
     }
 
-    // Scroll-to-Top Button visibility
     if (currentScroll > 200) {
         scrollBtn.style.display = 'block';
     } else {
@@ -346,7 +364,7 @@ scrollBtn.addEventListener('click', () => {
 });
 
 
-/* ===== Green Background Per-Card Logic (ไม่เปลี่ยนแปลง) ===== */
+/* ===== Green Background / Remember Logic (Combined) (ไม่เปลี่ยนแปลง) ===== */
 function getGreenBgKey(simp){
     return LSK_GREEN_BG_PREFIX + simp;
 }
@@ -373,7 +391,37 @@ function toggleGreenBg(e){
 
     writersWrap.classList.toggle('green-bg', checkbox.checked);
     saveGreenBgState(simp, checkbox.checked);
+
+    // เมื่อสถานะ Green BG เปลี่ยน, ถ้า Remember filter กำลังทำงานอยู่ ให้ render ใหม่
+    if (isRememberFilterActive) {
+        render();
+    }
 }
+
+
+/* ===== Remember Filter Logic (NEW) ===== */
+rememberFilterBtn.addEventListener('click', () => {
+    // Toggle สถานะ
+    isRememberFilterActive = !isRememberFilterActive;
+    
+    // อัพเดต DOM
+    if (isRememberFilterActive) {
+        rememberFilterBtn.classList.add('active');
+        // เมื่อเปิด filter, ต้องยกเลิก Search และ Alphabet active 
+        q.value = ''; // ล้าง Search Term
+        document.querySelectorAll('.alpha button').forEach(x => x.classList.remove('active')); // ล้างปุ่ม active
+        currentInitial = ''; // ล้าง Initial Filter
+    } else {
+        rememberFilterBtn.classList.remove('active');
+        // เมื่อปิด filter, กลับไปที่ 'All' และตั้งค่า active
+        currentInitial = 'All';
+        const allBtn = document.querySelector('button[data-initial="All"]');
+        if (allBtn) allBtn.classList.add('active');
+    }
+    
+    // render ใหม่ (ไม่ต้อง scroll-to-top อัตโนมัติ)
+    render();
+});
 
 
 /* ===== parser (ไม่เปลี่ยนแปลง) ===== */
@@ -415,42 +463,62 @@ function refreshDatasetSelect(selectKey){
   }
 }
 
-/* ===== Initials (pinyin bar) (แก้ไข: เพิ่ม "All" และ Scroll-to-top) ===== */
-// NEW: เพิ่ม 'All' เข้าไปในรายการ
+/* ===== Initial Counts & Initial Bar (สร้างปุ่ม *ไม่มี Count* และเป็นพิมพ์เล็ก) ===== */
+let INITIAL_COUNTS = {};
+function getInitialCounts(data) {
+    const counts = { 'All': data.length };
+    INITIALS.forEach(initial => {
+        counts[initial] = data.filter(item => item.alpha === initial).length;
+    });
+    return counts;
+}
+
 const INITIALS_UI=['All','A','O','E','B','P','M','F','D','T','N','L','G','K','H','J','Q','X','Zh','Ch','Sh','R','Z','C','S','Y','W'];
-let currentInitial='';
-alphaBar.innerHTML = ''; // Clear previous buttons
-INITIALS_UI.forEach(L=>{
-  const b=document.createElement('button'); 
-  b.textContent=L;
-  // NEW: กำหนดให้ 'All' เป็น active เริ่มต้น
-  if (L === 'All' && !currentInitial) {
-      b.classList.add('active');
-      currentInitial = 'All'; 
-  }
 
-  b.addEventListener('click',()=>{
-    document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active'));
-    
-    // Scroll to top when filter is pressed
-    window.scrollTo({ top: 0, behavior: 'smooth' }); 
-    
-    if(currentInitial===L && L !== 'All'){ // หากกดปุ่มเดิมซ้ำ (ยกเว้น All)
-        currentInitial='All'; // กลับไปที่ All
-        document.querySelector('.alpha button').classList.add('active');
-        render(); 
-        return; 
-    }
-    
-    currentInitial=L; 
-    b.classList.add('active'); 
-    render();
-  });
-  alphaBar.appendChild(b);
-});
+function renderInitialBar() {
+    alphaBar.innerHTML = '';
+    const activeInitial = currentInitial || 'All'; // active initial ควรเริ่มต้นที่ 'All'
+
+    INITIALS_UI.forEach(L => {
+        // NEW: ลบ Logic การแสดง Count ออก
+        const buttonText = (L === 'All' ? L : L.toLowerCase());
+        
+        const b = document.createElement('button');
+        b.textContent = buttonText;
+        b.dataset.initial = L; 
+
+        if (L === activeInitial) {
+            b.classList.add('active');
+        }
+
+        b.addEventListener('click', () => {
+            
+            // เมื่อกด Alphabet Filter ให้ยกเลิก Remember Filter
+            isRememberFilterActive = false;
+            rememberFilterBtn.classList.remove('active');
+            
+            document.querySelectorAll('.alpha button').forEach(x => x.classList.remove('active'));
+            
+            // Scroll to top when filter is pressed
+            window.scrollTo({ top: 0, behavior: 'smooth' }); 
+            
+            if (currentInitial === L && L !== 'All') { 
+                currentInitial='All'; 
+                document.querySelector(`button[data-initial="All"]`).classList.add('active');
+                render(); 
+                return; 
+            }
+            
+            currentInitial = L; 
+            b.classList.add('active'); 
+            render();
+        });
+        alphaBar.appendChild(b);
+    });
+}
 
 
-/* ===== Hanzi Writer data cache & initOneWriter & layout (ไม่เปลี่ยนแปลง) ===== */
+/* ===== Hanzi Writer cache & initOneWriter & layout (ไม่เปลี่ยนแปลง) ===== */
 function getCharDataCache(){try{return JSON.parse(localStorage.getItem(LSK_CHAR_CACHE)||'{}')}catch{return {}}}
 function setCharDataCache(obj){localStorage.setItem(LSK_CHAR_CACHE,JSON.stringify(obj||{}))}
 async function loadCharJSON(ch){
@@ -467,7 +535,6 @@ async function loadCharJSON(ch){
   throw new Error('no char data');
 }
 
-/* ===== สร้าง writer แบบ “เมื่อเห็นเท่านั้น” (ไม่เปลี่ยนแปลง) ===== */
 async function initOneWriter(el){
   const char = el.dataset.char;
   if(!char || el.dataset.inited) return;
@@ -495,7 +562,6 @@ const tileObserver = new IntersectionObserver(entries=>{
   });
 },{rootMargin:'200px 0px', threshold:0.1});
 
-/* ===== layout (ไม่เปลี่ยนแปลง) ===== */
 function layoutWritersGrid(container, count){
   const root = getComputedStyle(document.documentElement);
   const tile = parseFloat(root.getPropertyValue('--tile')) || 160;
@@ -574,15 +640,20 @@ function loadMoreCards(list){
 }
 
 
-/* ===== render (แก้ไข: ล็อก Header เมื่อมีคำเดียว และปรับ Logic การกรอง) ===== */
+/* ===== render (Search Starts With & No Space Pinyin) ===== */
 let CURRENT=[], VISIBLE=0, PAGE=48;
 let scrollDebounceTimer = null; 
 function render(){
   let list=CURRENT;
   const term=(q.value||'').toLowerCase().trim();
 
-  // กรองตามคำค้นหา
-  if(term){
+  // 1. กรองตาม Remember Filter ก่อน
+  if (isRememberFilterActive) {
+      list = list.filter(r => isGreenBgActive(r.simp));
+  } 
+  
+  // 2. กรองตาม Search Box
+  else if(term){
     currentInitial = ''; // ล้าง Initial Filter
     document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active')); // ล้างปุ่ม active
     
@@ -598,16 +669,15 @@ function render(){
     });
   } 
   
-  // กรองตาม Initial Filter (เฉพาะเมื่อไม่มีคำค้นหา และ initial ไม่ใช่ 'All')
+  // 3. กรองตาม Initial Filter (เฉพาะเมื่อไม่มีคำค้นหา และ initial ไม่ใช่ 'All')
   else if(currentInitial && currentInitial !== 'All') {
     list=list.filter(r=>r.alpha===currentInitial);
   }
-  // ถ้า currentInitial เป็น 'All' และไม่มีคำค้นหา list ก็คือ CURRENT ทั้งหมด (ไม่ต้องกรอง)
   
-  // NEW: Logic ล็อก Header
+  // Logic ล็อก Header: ไม่ย่อเมื่อมีคำศัพท์แสดงผล <= 1
   if (list.length <= 1) {
       mainHeader.classList.add('locked-no-shrink');
-      mainHeader.classList.remove('shrunk'); // ต้องแน่ใจว่าไม่ย่อ
+      mainHeader.classList.remove('shrunk'); 
   } else {
       mainHeader.classList.remove('locked-no-shrink');
   }
@@ -661,45 +731,15 @@ function render(){
   handleScroll(); 
 }
 
-// **NEW:** Global Listener for Debounced Infinite Scroll (ใช้ Logic เดิมที่ปรับแล้ว)
-let scrollLoadTimer = null;
-window.addEventListener('scroll', () => {
-    // 1. Handle Header/Scroll Button visibility (ทำงานเร็ว)
-    handleScroll(); 
-
-    // 2. Infinite Scroll Logic (ทำงานแบบ Debounce)
-    const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
-    
-    if (nearBottom && VISIBLE < CURRENT.length) {
-        clearTimeout(scrollLoadTimer);
-        
-        scrollLoadTimer = setTimeout(() => {
-            // Re-filtering list inside debounce call
-            let list = CURRENT;
-            const term=(q.value||'').toLowerCase().trim();
-            if(term){
-                const searchNoSpace = term.replace(/\s+/g, '');
-                list=list.filter(r => {
-                    const pinyinNoSpace = deTone(r.pinyin).toLowerCase().replace(/\s+/g, '');
-                    if (pinyinNoSpace.startsWith(searchNoSpace)) return true;
-                    if ((r.simp + r.trad).startsWith(term)) return true;
-                    return false;
-                });
-            } else if(currentInitial && currentInitial !== 'All') { // NEW: ใช้เงื่อนไข 'All'
-                list=list.filter(r=>r.alpha===currentInitial);
-            }
-            
-            if(VISIBLE < list.length) {
-                loadMoreCards(list);
-            }
-        }, 150); 
-    }
-});
-
-
 /* ===== loadLiveDataset, event listeners, init (ไม่เปลี่ยนแปลง) ===== */
 async function loadLiveDataset() {
-    q.value=''; currentInitial='All'; // กำหนดให้เริ่มต้นเป็น 'All'
+    q.value=''; 
+    currentInitial='All'; // กำหนดให้เริ่มต้นเป็น 'All'
+    
+    // ล้างสถานะ Remember Filter เมื่อโหลดชุดข้อมูลใหม่
+    isRememberFilterActive = false;
+    rememberFilterBtn.classList.remove('active');
+
     document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active'));
     
     const selectedKey = datasetSel.value;
@@ -718,7 +758,6 @@ async function loadLiveDataset() {
     cardsEl.innerHTML = `<div><p>⏳ <b>Loading:</b> กำลังดึงชุดคำศัพท์ "${dataset.title}" จาก GitHub...</p></div>`;
     
     try {
-        // ใช้ cache: "no-store" เพื่อให้เบราว์เซอร์ไม่ใช้แคชของไฟล์ TXT
         const response = await fetch(dataset.url, { cache: "no-store" }); 
         if (!response.ok) {
             cardsEl.innerHTML = `<div><p>❌ <b>ERROR:</b> ไม่สามารถดึงไฟล์จาก GitHub ได้ (Status: ${response.status}). กรุณาตรวจสอบ Raw URL ว่าถูกต้องและเป็นไฟล์สาธารณะหรือไม่</p></div>`;
@@ -731,6 +770,9 @@ async function loadLiveDataset() {
         }
 
         CURRENT = parseHSK(text);
+        // คำนวณ Initial Counts หลังโหลดข้อมูล
+        INITIAL_COUNTS = getInitialCounts(CURRENT);
+        renderInitialBar(); // สร้างปุ่มใหม่พร้อมจำนวน
         render();
         LAST_SELECTED_KEY = selectedKey;
         localStorage.setItem('hsk4_last_selected_live', selectedKey);
@@ -741,8 +783,54 @@ async function loadLiveDataset() {
 }
 
 // Event Listeners สำหรับ Filter/Search และ Dataset Select
-q.addEventListener('input', render);
+q.addEventListener('input', () => {
+    // เมื่อเริ่มค้นหา ให้ยกเลิก Remember Filter
+    isRememberFilterActive = false;
+    rememberFilterBtn.classList.remove('active');
+    render();
+});
 datasetSel.addEventListener('change', loadLiveDataset);
+
+// Global Listener for Debounced Infinite Scroll
+let scrollLoadTimer = null;
+window.addEventListener('scroll', () => {
+    // 1. Handle Header/Scroll Button visibility (ทำงานเร็ว)
+    handleScroll(); 
+
+    // 2. Infinite Scroll Logic (ทำงานแบบ Debounce)
+    const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
+    
+    if (nearBottom && VISIBLE < CURRENT.length) {
+        clearTimeout(scrollLoadTimer);
+        
+        scrollLoadTimer = setTimeout(() => {
+            // Re-filtering list inside debounce call
+            let list = CURRENT;
+            const term=(q.value||'').toLowerCase().trim();
+
+            if (isRememberFilterActive) {
+                list = list.filter(r => isGreenBgActive(r.simp));
+            }
+            
+            else if(term){
+                const searchNoSpace = term.replace(/\s+/g, '');
+                list=list.filter(r => {
+                    const pinyinNoSpace = deTone(r.pinyin).toLowerCase().replace(/\s+/g, '');
+                    if (pinyinNoSpace.startsWith(searchNoSpace)) return true;
+                    if ((r.simp + r.trad).startsWith(term)) return true;
+                    return false;
+                });
+            } else if(currentInitial && currentInitial !== 'All') { 
+                list=list.filter(r=>r.alpha===currentInitial);
+            }
+            
+            if(VISIBLE < list.length) {
+                loadMoreCards(list);
+            }
+        }, 150); 
+    }
+});
+
 
 (function init(){
     // โหลดชุดคำศัพท์ที่เคยถูกเลือกไว้ล่าสุด หรือชุดแรก
@@ -750,7 +838,7 @@ datasetSel.addEventListener('change', loadLiveDataset);
     
     refreshDatasetSelect(lastKey);
     
-    // โหลดข้อมูลชุดแรก
+    // โหลดข้อมูลชุดแรก (ซึ่งจะเรียก renderInitialBar() ภายใน loadLiveDataset())
     loadLiveDataset();
 
     // ส่วน TTS/Voice
