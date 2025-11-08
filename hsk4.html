@@ -6,12 +6,45 @@
 <title>HSK Cards</title>
 <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5.2/dist/hanzi-writer.min.js"></script>
 <style>
-  :root{--pad:14px; --card:16px; --tile:160px; --gap:10px}
+  :root{--pad:14px; --card:16px; --tile:160px; --gap:10px; --header-height: 120px;}
   body{margin:0;background:#fafafa;font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans SC','Noto Sans',sans-serif}
-  header{position:sticky;top:0;background:#fff;border-bottom:1px solid #eee;padding:var(--pad);z-index:10}
+  
+  header{
+    position:sticky;top:0;background:#fff;border-bottom:1px solid #eee;padding:var(--pad);z-index:10;
+    transition: padding 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  /* Style สำหรับ Header ที่ย่อส่วน (เมื่อใส่คลาส .shrunk) */
+  header.shrunk{
+    padding-top: 8px;
+    padding-bottom: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,.1);
+  }
+  /* ซ่อนทุกอย่างที่ไม่อยู่ใน alpha/search bar เมื่อย่อส่วน */
+  header.shrunk .header-hide{
+    display: none !important;
+  }
+  
   h1{margin:0 0 8px;font-size:18px}
   .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
   input[type="search"],select,button{padding:12px 14px;border-radius:12px;border:1px solid #ddd;background:#fff;font-size:17px;min-height:44px}
+  
+  /* Style สำหรับ Checkbox ใน Header (ไม่มีแล้วแต่คง style อื่นไว้) */
+  .header-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+    color: #333;
+  }
+  .header-checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    min-height: 18px;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+  }
 
   .alpha{display:flex;gap:6px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:6px}
   .alpha::-webkit-scrollbar{display:none}
@@ -50,7 +83,7 @@
   /* fallback glyph size will follow --cell (set by JS) */
   .writer.fallback{font-size:calc(var(--cell, 80px) * 0.66);color:#222}
 
-  /* NEW: Style สำหรับพื้นหลังสีเขียว (ควบคุมที่ writers-wrap) */
+  /* Style สำหรับพื้นหลังสีเขียว (ควบคุมที่ writers-wrap) */
   .writers-wrap.green-bg .writer{
     background:#e8f5e9; /* Light Green */
   }
@@ -63,6 +96,22 @@
   .meaning{margin-top:8px;color:#333;font-size:16px;text-align:center}
   .badge{font-size:12px;color:#666}
   
+  /* Style สำหรับ Checkbox ใน Card (มุมซ้ายบน) */
+  .badge-green-toggle{
+    position: absolute;
+    top: var(--card); 
+    left: var(--card); 
+    display:flex;
+    align-items:center;
+    z-index: 5; 
+  }
+  .badge-green-toggle input[type="checkbox"]{
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      cursor: pointer;
+  }
+  
   /* Style สำหรับเลขลำดับ (อยู่มุมขวาบน) */
   .badge-order{
     position: absolute;
@@ -72,35 +121,42 @@
     color: #aaa;
   }
   
-  /* NEW: Style สำหรับ Checkbox ใน Card (มุมซ้ายบน) */
-  .badge-green-toggle{
-    position: absolute;
-    top: var(--card); 
-    left: var(--card); 
-    display:flex;
-    align-items:center;
-    z-index: 5; /* ให้อยู่เหนือเนื้อหาอื่นใน card */
+  /* Scroll-to-Top Button */
+  #scrollToTop{
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: #111;
+    color: #fff;
+    border: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,.2);
+    font-size: 24px;
+    line-height: 1;
+    display: none; 
+    cursor: pointer;
+    z-index: 20;
+    transition: background 0.2s;
   }
-  .badge-green-toggle label{
-      cursor: pointer;
-  }
-  .badge-green-toggle input[type="checkbox"]{
-      width: 18px;
-      height: 18px;
-      margin: 0;
-      cursor: pointer;
+  #scrollToTop:hover{
+      background: #333;
   }
 </style>
 </head>
 <body>
-<header>
+<header id="mainHeader">
   <h1>HSK Cards — (Live GitHub)</h1>
-  <div class="row" style="margin-bottom:8px">
+  
+  <div class="row header-hide" style="margin-bottom:8px">
     <label>Dataset: <select id="dataset"></select></label>
-    <input id="q" type="search" placeholder="ค้นหา: อักษรจีน / pinyin / ความหมาย…" />
+    <input id="q" type="search" placeholder="ค้นหา: อักษรจีน / pinyin…" />
   </div>
+  
   <div class="alpha" id="alphaBar"></div>
-  <div class="row" style="margin-top:8px">
+  
+  <div class="row header-hide" style="margin-top:8px">
     <label>เสียง (zh-CN): <select id="voice"></select></label>
     <span class="badge" id="count"></span>
   </div>
@@ -110,8 +166,10 @@
   <div id="cards" class="cards"></div>
 </main>
 
+<button id="scrollToTop" title="Go to top">▲</button>
+
 <script>
-/* ===== SCRIPT START - NEW VERSION (Green BG Per-Card) ===== */
+/* ===== SCRIPT START - NEW VERSION (Final - Search Starts With) ===== */
 
 // ********************************************
 // * ⚠️ แก้ไขตรงนี้: ใส่รายการชุดคำศัพท์ของคุณ *
@@ -133,10 +191,13 @@ const datasetSel=document.getElementById('dataset');
 const q=document.getElementById('q'), alphaBar=document.getElementById('alphaBar');
 const voiceSel=document.getElementById('voice'), count=document.getElementById('count');
 const cardsEl=document.getElementById('cards');
+const mainHeader = document.getElementById('mainHeader'); 
+const scrollBtn = document.getElementById('scrollToTop');  
 
 const LSK_VOICE = 'hsk4_voice';
 const LSK_CHAR_CACHE = 'hanzi_char_json_cache';
-const LSK_GREEN_BG_PREFIX = 'hsk4_green_bg_'; // Prefix สำหรับสถานะ Green BG ของแต่ละคำ
+const LSK_GREEN_BG_PREFIX = 'hsk4_green_bg_'; 
+const LSK_GLOBAL_GREEN_BG = 'hsk4_global_green_bg'; 
 let LAST_SELECTED_KEY = GITHUB_DATASETS[0]?.key || 'ds1';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -164,7 +225,7 @@ function pinyinInitial(p){
   return ch.toUpperCase();
 }
 
-/* ===== Voices (แก้ไข: บังคับเลือก 'tingting') ===== */
+/* ===== Voices (บังคับเลือก 'tingting') ===== */
 function loadVoices(){
   if(!('speechSynthesis'in window))return;
   const allVoices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh'));
@@ -179,7 +240,7 @@ function loadVoices(){
       names.add(tingting.name);
   }
   
-  // 2. เลือก 2 เสียงแรกที่ระบบมี (โดยไม่ซ้ำกับที่เลือกไว้แล้ว)
+  // 2. ถ้ายังไม่ครบ 2 ให้เลือกเสียงอื่นเพิ่ม (เป็นตัวสำรองเผื่อ tingting ใช้ไม่ได้)
   allVoices.forEach(v => {
       if (!names.has(v.name) && preferredVoices.length < 2) {
           preferredVoices.push(v);
@@ -192,7 +253,7 @@ function loadVoices(){
   preferredVoices.forEach(v=>{
     const o=document.createElement('option');
     o.value=v.name;
-    o.textContent=v.name+' ('+v.lang+')';
+    o.textContent=(v.name.toLowerCase().includes('tingting') ? 'Ting-Ting' : v.name)+' ('+v.lang+')';
     voiceSel.appendChild(o);
   });
   
@@ -203,7 +264,17 @@ function loadVoices(){
   } else if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) {
       voiceSel.value=saved;
   }
+
+  // ถ้ามี tingting ตัวเดียว ให้ซ่อน select ให้เหลือแค่ชื่อเสียง
+  if (preferredVoices.length === 1 && tingting) {
+      voiceSel.style.minWidth = '200px'; 
+      voiceSel.style.pointerEvents = 'none'; 
+  } else {
+      voiceSel.style.minWidth = '';
+      voiceSel.style.pointerEvents = 'auto';
+  }
 }
+
 function getVoice(){const name=voiceSel.value;return speechSynthesis.getVoices().find(v=>v.name===name)||null}
 let ttsReady = false;
 function warmTTS(){
@@ -236,24 +307,59 @@ function speak(text){
 if('speechSynthesis'in window){loadVoices(); speechSynthesis.onvoiceschanged=loadVoices}
 voiceSel.addEventListener('change',()=>localStorage.setItem(LSK_VOICE,voiceSel.value))
 
-/* ===== Green Background Per-Card Logic (NEW) ===== */
+
+/* ===== Scroll Logic (Header Collapse & Scroll Top) ===== */
+let isHeaderShrunk = false;
+function handleScroll(){
+    const currentScroll = window.scrollY || document.documentElement.scrollTop;
+
+    // Header Shrinking/Collapsing
+    if (currentScroll > 60) {
+        if (!isHeaderShrunk) {
+            mainHeader.classList.add('shrunk');
+            isHeaderShrunk = true;
+        }
+    } else {
+        if (isHeaderShrunk) {
+            mainHeader.classList.remove('shrunk');
+            isHeaderShrunk = false;
+        }
+    }
+
+    // Scroll-to-Top Button visibility
+    if (currentScroll > 200) {
+        scrollBtn.style.display = 'block';
+    } else {
+        scrollBtn.style.display = 'none';
+    }
+}
+
+
+/* ===== Green Background Per-Card Logic ===== */
 function getGreenBgKey(simp){
     return LSK_GREEN_BG_PREFIX + simp;
 }
 function isGreenBgActive(simp){
+    // ตรวจสอบแค่สถานะ Per-Card เท่านั้น
     return localStorage.getItem(getGreenBgKey(simp)) === '1';
 }
+
 function saveGreenBgState(simp, isChecked){
     if (isChecked) {
         localStorage.setItem(getGreenBgKey(simp), '1');
     } else {
-        localStorage.removeItem(getGreenBgKey(simp)); // ลบออกเพื่อประหยัดพื้นที่
+        localStorage.removeItem(getGreenBgKey(simp)); 
     }
 }
+
 function toggleGreenBg(e){
     const checkbox = e.target;
     const simp = checkbox.dataset.simp;
-    const writersWrap = checkbox.closest('.card').querySelector('.writers-wrap');
+    
+    const card = checkbox.closest('.card');
+    if (!card) return;
+
+    const writersWrap = card.querySelector('.writers-wrap');
 
     writersWrap.classList.toggle('green-bg', checkbox.checked);
     saveGreenBgState(simp, checkbox.checked);
@@ -386,19 +492,89 @@ function layoutWritersGrid(container, count){
   }
 }
 
-/* ===== render (แก้ไข: เพิ่ม Checkbox ต่อคำ) ===== */
+/* ===== loadMoreCards (Infinite Scroll) ===== */
+function loadMoreCards(list){
+    const end = Math.min(list.length, VISIBLE + PAGE);
+    const frag2=document.createDocumentFragment();
+    for(let i=VISIBLE;i<end;i++){
+        const row=list[i];
+        const isGreen = isGreenBgActive(row.simp);
+        const checkedAttr = isGreen ? 'checked' : '';
+        const bgClass = isGreen ? ' green-bg' : '';
+
+        const card=document.createElement('div'); card.className='card';
+        const chars=(row.simp||'').split('').filter(c=>/\p{Script=Han}/u.test(c));
+        card.innerHTML=`
+          <div class="badge-green-toggle">
+            <input type="checkbox" data-simp="${row.simp}" ${checkedAttr} class="green-bg-checkbox" id="gbc-${row.simp.replace(/[^a-z0-9]/g, '')}-${i}">
+          </div>
+          <div class="c-top">
+            <div class="zz">${row.simp}</div>
+            <div class="tt">${row.trad}</div>
+          </div>
+          <div class="writers-wrap${bgClass}"><div class="writers"></div></div>
+          <div class="pinyin-row">
+            <button class="play-main" type="button" data-text="${row.simp}">
+              <span class="pinyin-text">${row.pinyin}</span>
+            </button>
+          </div>
+          <div class="meaning">${row.meaning}</div>
+          <div class="badge-order">${i + 1}</div>`;
+        const grid=card.querySelector('.writers');
+        grid.innerHTML = chars.map(ch=>`<div class="writer" data-char="${ch}" role="button" aria-label="tap"></div>`).join('');
+        layoutWritersGrid(grid, chars.length);
+        frag2.appendChild(card);
+    }
+    cardsEl.appendChild(frag2);
+    
+    // Attach Listeners for newly added Cards
+    cardsEl.querySelectorAll('.play-main').forEach(btn=>{
+        if(!btn.dataset.bound){ btn.dataset.bound='1'; btn.addEventListener('click', e=> speak(e.currentTarget.dataset.text)); }
+    });
+    cardsEl.querySelectorAll('.writer').forEach(tile=>{
+        if(!tile.dataset.observe){ tile.dataset.observe='1'; tileObserver.observe(tile); }
+    });
+    cardsEl.querySelectorAll('.green-bg-checkbox').forEach(chk => {
+        if(!chk.dataset.bound){ chk.dataset.bound='1'; chk.addEventListener('change', toggleGreenBg); }
+    });
+    
+    VISIBLE = end;
+}
+
+
+/* ===== render (แก้ไข: จำกัดการค้นหาเป็น "Starts With" และ Pinyin Bar) ===== */
 let CURRENT=[], VISIBLE=0, PAGE=48;
+/* ===== render (แก้ไข: ทำให้ค้นหาพินอินแบบไม่เว้นวรรคได้) ===== */
+// ... (ส่วนประกาศตัวแปรต่างๆ) ...
 function render(){
   let list=CURRENT;
   const term=(q.value||'').toLowerCase().trim();
+
+  // ถ้ามีคำค้นหา ให้ยกเลิกการใช้ Initial Bar
   if(term){
-    list=list.filter(r =>
-      r.meaning.toLowerCase().includes(term) ||
-      deTone(r.pinyin).toLowerCase().includes(term) ||
-      (r.simp + r.trad).includes(term)
-    );
+    currentInitial = ''; // ล้าง Initial Filter
+    document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active')); // ล้างปุ่ม active
+    
+    // NEW: สร้างคำค้นหาแบบไม่มีช่องว่างเพื่อเปรียบเทียบกับพินอิน
+    const searchNoSpace = term.replace(/\s+/g, '');
+    
+    list=list.filter(r => {
+        // 1. สร้างพินอินของคำศัพท์แบบไม่มีวรรณยุกต์และไม่มีช่องว่าง
+        const pinyinNoSpace = deTone(r.pinyin).toLowerCase().replace(/\s+/g, '');
+        
+        // 2. ค้นหา Pinyin: ต้องขึ้นต้นด้วยคำค้นหา (แบบไม่มีช่องว่าง)
+        if (pinyinNoSpace.startsWith(searchNoSpace)) return true;
+        
+        // 3. ค้นหา อักษรจีน: ต้องขึ้นต้นด้วยคำค้นหา (แบบปกติ)
+        if ((r.simp + r.trad).startsWith(term)) return true;
+        
+        return false;
+    });
+  } else if(currentInitial) {
+    // ถ้าไม่มีคำค้นหา แต่มี Initial Filter
+    list=list.filter(r=>r.alpha===currentInitial);
   }
-  if(currentInitial) list=list.filter(r=>r.alpha===currentInitial);
+  
   count.textContent=list.length+' / '+CURRENT.length+' items';
 
   VISIBLE = Math.min(list.length, PAGE);
@@ -444,59 +620,27 @@ function render(){
       chk.addEventListener('change', toggleGreenBg);
   });
   
+  // NEW: Scroll Logic - Throttling for infinite scroll
+  let isScrolling = false;
   window.onscroll = () => {
-    const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
-    if(nearBottom && VISIBLE < list.length){
-      const end = Math.min(list.length, VISIBLE + PAGE);
-      const frag2=document.createDocumentFragment();
-      for(let i=VISIBLE;i<end;i++){
-        const row=list[i];
-        const isGreen = isGreenBgActive(row.simp);
-        const checkedAttr = isGreen ? 'checked' : '';
-        const bgClass = isGreen ? ' green-bg' : '';
-
-        const card=document.createElement('div'); card.className='card';
-        const chars=(row.simp||'').split('').filter(c=>/\p{Script=Han}/u.test(c));
-        card.innerHTML=`
-          <div class="badge-green-toggle">
-            <input type="checkbox" data-simp="${row.simp}" ${checkedAttr} class="green-bg-checkbox" id="gbc-${row.simp.replace(/[^a-z0-9]/g, '')}-${i}">
-          </div>
-          <div class="c-top">
-            <div class="zz">${row.simp}</div>
-            <div class="tt">${row.trad}</div>
-          </div>
-          <div class="writers-wrap${bgClass}"><div class="writers"></div></div>
-          <div class="pinyin-row">
-            <button class="play-main" type="button" data-text="${row.simp}">
-              <span class="pinyin-text">${row.pinyin}</span>
-            </button>
-          </div>
-          <div class="meaning">${row.meaning}</div>
-          <div class="badge-order">${i + 1}</div>`;
-        const grid=card.querySelector('.writers');
-        grid.innerHTML = chars.map(ch=>`<div class="writer" data-char="${ch}" role="button" aria-label="tap"></div>`).join('');
-        layoutWritersGrid(grid, chars.length);
-        frag2.appendChild(card);
-      }
-      cardsEl.appendChild(frag2);
-      
-      // Attach Listeners for newly added Cards
-      cardsEl.querySelectorAll('.play-main').forEach(btn=>{
-        if(!btn.dataset.bound){ btn.dataset.bound='1'; btn.addEventListener('click', e=> speak(e.currentTarget.dataset.text)); }
-      });
-      cardsEl.querySelectorAll('.writer').forEach(tile=>{
-        if(!tile.dataset.observe){ tile.dataset.observe='1'; tileObserver.observe(tile); }
-      });
-      cardsEl.querySelectorAll('.green-bg-checkbox').forEach(chk => {
-          if(!chk.dataset.bound){ chk.dataset.bound='1'; chk.addEventListener('change', toggleGreenBg); }
-      });
-      
-      VISIBLE = end;
+    // 1. เรียกใช้ handleScroll (สำหรับ Header Collapse และ Scroll-to-Top) ทันที
+    handleScroll(); 
+    
+    // 2. Throttling Logic สำหรับ Infinite Scroll
+    if (!isScrolling) {
+        isScrolling = true;
+        requestAnimationFrame(() => {
+            const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
+            if(nearBottom && VISIBLE < list.length){
+                loadMoreCards(list);
+            }
+            isScrolling = false;
+        });
     }
   };
 }
 
-/* ===== init (ดึงข้อมูลจาก GitHub เสมอตามชุดที่เลือก) ===== */
+/* ===== loadLiveDataset, event listeners, init (ไม่เปลี่ยนแปลง) ===== */
 async function loadLiveDataset() {
     q.value=''; currentInitial=''; document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active'));
     
@@ -553,6 +697,9 @@ datasetSel.addEventListener('change', loadLiveDataset);
 
     // ส่วน TTS/Voice
     if('speechSynthesis' in window){loadVoices(); speechSynthesis.onvoiceschanged=loadVoices}
+    
+    // เรียก handleScroll หนึ่งครั้งตอนเริ่มต้น เพื่อกำหนดสถานะปุ่ม
+    handleScroll();
 })();
 /* ===== SCRIPT END ===== */
 </script>
