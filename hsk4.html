@@ -169,7 +169,7 @@
 <button id="scrollToTop" title="Go to top">▲</button>
 
 <script>
-/* ===== SCRIPT START - NEW VERSION (Final - Ultra-Optimized Scroll) ===== */
+/* ===== SCRIPT START - NEW VERSION (Final - Header Collapse Fixed with 1-word Condition) ===== */
 
 // ********************************************
 // * ⚠️ แก้ไขตรงนี้: ใส่รายการชุดคำศัพท์ของคุณ *
@@ -225,38 +225,54 @@ function pinyinInitial(p){
   return ch.toUpperCase();
 }
 
-/* ===== Voices (แสดงเสียงทั้งหมด, ไม่ซ่อน) [แก้ไข] ===== */
+/* ===== Voices (บังคับเลือก 'tingting') ===== */
 function loadVoices(){
   if(!('speechSynthesis'in window))return;
-  // กรองเสียงทั้งหมดที่เป็นภาษาจีน
-  const allVoices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh')); 
+  const allVoices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh'));
   
+  const preferredVoices = [];
+  const names = new Set();
+  
+  // 1. บังคับเลือก 'tingting' เป็นอันดับแรก
+  const tingting = allVoices.find(v => v.name.toLowerCase().includes('tingting'));
+  if (tingting) {
+      preferredVoices.push(tingting);
+      names.add(tingting.name);
+  }
+  
+  // 2. ถ้ายังไม่ครบ 2 ให้เลือกเสียงอื่นเพิ่ม (เป็นตัวสำรองเผื่อ tingting ใช้ไม่ได้)
+  allVoices.forEach(v => {
+      if (!names.has(v.name) && preferredVoices.length < 2) {
+          preferredVoices.push(v);
+          names.add(v.name);
+      }
+  });
+
+  // 3. แสดงผลใน Select
   voiceSel.innerHTML=''; 
-  allVoices.forEach(v=>{
+  preferredVoices.forEach(v=>{
     const o=document.createElement('option');
     o.value=v.name;
-    // ปรับชื่อเสียงให้เข้าใจง่ายขึ้น
-    o.textContent=(v.name.toLowerCase().includes('tingting') ? 'Ting-Ting (Standard)' : v.name)+' ('+v.lang+')'; 
+    o.textContent=(v.name.toLowerCase().includes('tingting') ? 'Ting-Ting' : v.name)+' ('+v.lang+')';
     voiceSel.appendChild(o);
   });
   
   const saved=localStorage.getItem(LSK_VOICE); 
-  const tingting = allVoices.find(v => v.name.toLowerCase().includes('tingting'));
-  
-  // เลือกเสียงที่บันทึกไว้
-  if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) {
-      voiceSel.value = saved;
-  } 
-  // หากไม่มีเสียงที่บันทึกไว้ ให้เลือก tingting เป็น default
-  else if (tingting && Array.from(voiceSel.options).some(o => o.value === tingting.name)) {
+  // หากมี 'tingting' ให้เลือก tingting เสมอ
+  if (tingting && Array.from(voiceSel.options).some(o => o.value === tingting.name)) {
       voiceSel.value = tingting.name;
-  } else if (allVoices.length > 0) {
-      voiceSel.value = allVoices[0].name; // หรือเลือกเสียงแรก
+  } else if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) {
+      voiceSel.value=saved;
   }
 
-  // ลบโค้ดที่ซ่อน select ออก เพื่อให้ผู้ใช้เลือกได้ตามต้องการ
-  voiceSel.style.minWidth = '';
-  voiceSel.style.pointerEvents = 'auto';
+  // ถ้ามี tingting ตัวเดียว ให้ซ่อน select ให้เหลือแค่ชื่อเสียง
+  if (preferredVoices.length === 1 && tingting) {
+      voiceSel.style.minWidth = '200px'; 
+      voiceSel.style.pointerEvents = 'none'; 
+  } else {
+      voiceSel.style.minWidth = '';
+      voiceSel.style.pointerEvents = 'auto';
+  }
 }
 
 function getVoice(){const name=voiceSel.value;return speechSynthesis.getVoices().find(v=>v.name===name)||null}
@@ -292,35 +308,28 @@ if('speechSynthesis'in window){loadVoices(); speechSynthesis.onvoiceschanged=loa
 voiceSel.addEventListener('change',()=>localStorage.setItem(LSK_VOICE,voiceSel.value))
 
 
-/* ===== Scroll Logic (Header Collapse & Scroll Top) [แก้ไข] ===== */
+/* ===== Scroll Logic (Header Collapse & Scroll Top) (แก้ไข Header Shrink) ===== */
 let isHeaderShrunk = false;
 function handleScroll(){
     const currentScroll = window.scrollY || document.documentElement.scrollTop;
-    
-    // NEW LOGIC: ป้องกันการย่อ Header บนหน้าจอขนาดเล็ก (เช่น โทรศัพท์)
-    // ถ้าหน้าจอกว้างน้อยกว่าหรือเท่ากับ 768px จะยกเลิกการย่อ Header
-    const isMobile = window.innerWidth <= 768; 
 
     // Header Shrinking/Collapsing
-    if (isMobile) {
-        // บนมือถือ ให้ Header อยู่ในสถานะขยายเสมอ
-        mainHeader.classList.remove('shrunk');
-        isHeaderShrunk = false;
-    } else if (currentScroll > 60) {
-        // บนเดสก์ท็อป ให้ย่อเมื่อ scroll
-        if (!isHeaderShrunk) {
+    // NEW: Header จะย่อได้ก็ต่อเมื่อไม่ได้ถูกล็อค (mainHeader ไม่ได้มีคลาส locked-no-shrink)
+    const isLocked = mainHeader.classList.contains('locked-no-shrink');
+    
+    if (currentScroll > 60) {
+        if (!isHeaderShrunk && !isLocked) {
             mainHeader.classList.add('shrunk');
             isHeaderShrunk = true;
         }
     } else {
-        // บนเดสก์ท็อป ให้ขยายเมื่ออยู่ด้านบน
         if (isHeaderShrunk) {
             mainHeader.classList.remove('shrunk');
             isHeaderShrunk = false;
         }
     }
 
-    // Scroll-to-Top Button visibility (ยังคงทำงานเหมือนเดิม)
+    // Scroll-to-Top Button visibility
     if (currentScroll > 200) {
         scrollBtn.style.display = 'block';
     } else {
@@ -329,7 +338,6 @@ function handleScroll(){
 }
 
 window.addEventListener('scroll', handleScroll, { passive: true });
-window.addEventListener('resize', handleScroll); // เพิ่ม listener สำหรับการตรวจสอบเมื่อเปลี่ยนขนาดหน้าจอ
 scrollBtn.addEventListener('click', () => {
     window.scrollTo({
         top: 0,
@@ -548,37 +556,40 @@ function loadMoreCards(list){
 }
 
 
-/* ===== render (Search Starts With & No Space Pinyin) ===== */
+/* ===== render (แก้ไข: ล็อก Header เมื่อมีคำเดียว) ===== */
 let CURRENT=[], VISIBLE=0, PAGE=48;
-let scrollDebounceTimer = null; // Debounce Timer
+let scrollDebounceTimer = null; 
 function render(){
   let list=CURRENT;
   const term=(q.value||'').toLowerCase().trim();
 
-  // ถ้ามีคำค้นหา ให้ยกเลิกการใช้ Initial Bar
+  // กรองตามคำค้นหา
   if(term){
-    currentInitial = ''; // ล้าง Initial Filter
-    document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active')); // ล้างปุ่ม active
+    currentInitial = ''; 
+    document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active')); 
     
     const searchNoSpace = term.replace(/\s+/g, '');
     
     list=list.filter(r => {
-        // 1. สร้างพินอินของคำศัพท์แบบไม่มีวรรณยุกต์และไม่มีช่องว่าง
         const pinyinNoSpace = deTone(r.pinyin).toLowerCase().replace(/\s+/g, '');
         
-        // 2. ค้นหา Pinyin: ต้องขึ้นต้นด้วยคำค้นหา (แบบไม่มีช่องว่าง)
         if (pinyinNoSpace.startsWith(searchNoSpace)) return true;
-        
-        // 3. ค้นหา อักษรจีน: ต้องขึ้นต้นด้วยคำค้นหา (แบบปกติ)
         if ((r.simp + r.trad).startsWith(term)) return true;
         
         return false;
     });
   } else if(currentInitial) {
-    // ถ้าไม่มีคำค้นหา แต่มี Initial Filter
     list=list.filter(r=>r.alpha===currentInitial);
   }
   
+  // NEW: Logic ล็อก Header
+  if (list.length <= 1) {
+      mainHeader.classList.add('locked-no-shrink');
+      mainHeader.classList.remove('shrunk'); // ต้องแน่ใจว่าไม่ย่อ
+  } else {
+      mainHeader.classList.remove('locked-no-shrink');
+  }
+
   count.textContent=list.length+' / '+CURRENT.length+' items';
 
   VISIBLE = Math.min(list.length, PAGE);
@@ -624,9 +635,45 @@ function render(){
       chk.addEventListener('change', toggleGreenBg);
   });
   
-  // NEW: Scroll Logic - Throttling/Debouncing for infinite scroll
-  // ลบ window.onscroll เดิมออก และย้าย Logic ไปที่ Global Listener ด้านล่าง
+  // เรียก handleScroll อีกครั้งเมื่อ render เสร็จ เพื่ออัพเดตสถานะ Header ทันที
+  handleScroll(); 
 }
+
+// **NEW:** Global Listener for Debounced Infinite Scroll (ใช้ Logic เดิมที่ปรับแล้ว)
+let scrollLoadTimer = null;
+window.addEventListener('scroll', () => {
+    // 1. Handle Header/Scroll Button visibility (ทำงานเร็ว)
+    handleScroll(); 
+
+    // 2. Infinite Scroll Logic (ทำงานแบบ Debounce)
+    const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
+    
+    if (nearBottom && VISIBLE < CURRENT.length) {
+        clearTimeout(scrollLoadTimer);
+        
+        scrollLoadTimer = setTimeout(() => {
+            // Re-filtering list inside debounce call
+            let list = CURRENT;
+            const term=(q.value||'').toLowerCase().trim();
+            if(term){
+                const searchNoSpace = term.replace(/\s+/g, '');
+                list=list.filter(r => {
+                    const pinyinNoSpace = deTone(r.pinyin).toLowerCase().replace(/\s+/g, '');
+                    if (pinyinNoSpace.startsWith(searchNoSpace)) return true;
+                    if ((r.simp + r.trad).startsWith(term)) return true;
+                    return false;
+                });
+            } else if(currentInitial) {
+                list=list.filter(r=>r.alpha===currentInitial);
+            }
+            
+            if(VISIBLE < list.length) {
+                loadMoreCards(list);
+            }
+        }, 150); 
+    }
+});
+
 
 /* ===== loadLiveDataset, event listeners, init (ไม่เปลี่ยนแปลง) ===== */
 async function loadLiveDataset() {
@@ -673,41 +720,6 @@ async function loadLiveDataset() {
 // Event Listeners สำหรับ Filter/Search และ Dataset Select
 q.addEventListener('input', render);
 datasetSel.addEventListener('change', loadLiveDataset);
-
-// **NEW:** Global Listener for Debounced Infinite Scroll
-let scrollLoadTimer = null;
-window.addEventListener('scroll', () => {
-    // Check if near bottom
-    const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
-    
-    if (nearBottom && VISIBLE < CURRENT.length) {
-        // Clear previous timer
-        clearTimeout(scrollLoadTimer);
-        
-        // Debounce loading to prevent stuttering while actively scrolling
-        scrollLoadTimer = setTimeout(() => {
-            // Need to get the current list again because it might have been filtered by search/initials
-            let list = CURRENT;
-            const term=(q.value||'').toLowerCase().trim();
-            if(term){
-                const searchNoSpace = term.replace(/\s+/g, '');
-                list=list.filter(r => {
-                    const pinyinNoSpace = deTone(r.pinyin).toLowerCase().replace(/\s+/g, '');
-                    if (pinyinNoSpace.startsWith(searchNoSpace)) return true;
-                    if ((r.simp + r.trad).startsWith(term)) return true;
-                    return false;
-                });
-            } else if(currentInitial) {
-                list=list.filter(r=>r.alpha===currentInitial);
-            }
-            
-            if(VISIBLE < list.length) {
-                loadMoreCards(list);
-            }
-        }, 150); // Wait 150ms after user stops scrolling before loading more
-    }
-});
-
 
 (function init(){
     // โหลดชุดคำศัพท์ที่เคยถูกเลือกไว้ล่าสุด หรือชุดแรก
