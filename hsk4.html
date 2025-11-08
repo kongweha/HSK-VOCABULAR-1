@@ -169,7 +169,7 @@
 <button id="scrollToTop" title="Go to top">▲</button>
 
 <script>
-/* ===== SCRIPT START - NEW VERSION (Final - Search Starts With) ===== */
+/* ===== SCRIPT START - NEW VERSION (Final - Ultra-Optimized Scroll) ===== */
 
 // ********************************************
 // * ⚠️ แก้ไขตรงนี้: ใส่รายการชุดคำศัพท์ของคุณ *
@@ -334,13 +334,20 @@ function handleScroll(){
     }
 }
 
+window.addEventListener('scroll', handleScroll, { passive: true });
+scrollBtn.addEventListener('click', () => {
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+    });
+});
 
-/* ===== Green Background Per-Card Logic ===== */
+
+/* ===== Green Background Per-Card Logic (ไม่เปลี่ยนแปลง) ===== */
 function getGreenBgKey(simp){
     return LSK_GREEN_BG_PREFIX + simp;
 }
 function isGreenBgActive(simp){
-    // ตรวจสอบแค่สถานะ Per-Card เท่านั้น
     return localStorage.getItem(getGreenBgKey(simp)) === '1';
 }
 
@@ -405,20 +412,24 @@ function refreshDatasetSelect(selectKey){
   }
 }
 
-/* ===== Initials (pinyin bar) (ไม่เปลี่ยนแปลง) ===== */
+/* ===== Initials (pinyin bar) (แก้ไข: เพิ่ม scroll-to-top เมื่อกด) ===== */
 const INITIALS_UI=['A','O','E','B','P','M','F','D','T','N','L','G','K','H','J','Q','X','Zh','Ch','Sh','R','Z','C','S','Y','W'];
 let currentInitial='';
 INITIALS_UI.forEach(L=>{
   const b=document.createElement('button'); b.textContent=L;
   b.addEventListener('click',()=>{
     document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active'));
+    
+    // Scroll to top when filter is pressed
+    window.scrollTo({ top: 0, behavior: 'smooth' }); 
+    
     if(currentInitial===L){ currentInitial=''; render(); return; }
     currentInitial=L; b.classList.add('active'); render();
   });
   alphaBar.appendChild(b);
 });
 
-/* ===== Hanzi Writer data cache (ไม่เปลี่ยนแปลง) ===== */
+/* ===== Hanzi Writer data cache & initOneWriter & layout (ไม่เปลี่ยนแปลง) ===== */
 function getCharDataCache(){try{return JSON.parse(localStorage.getItem(LSK_CHAR_CACHE)||'{}')}catch{return {}}}
 function setCharDataCache(obj){localStorage.setItem(LSK_CHAR_CACHE,JSON.stringify(obj||{}))}
 async function loadCharJSON(ch){
@@ -542,10 +553,9 @@ function loadMoreCards(list){
 }
 
 
-/* ===== render (แก้ไข: จำกัดการค้นหาเป็น "Starts With" และ Pinyin Bar) ===== */
+/* ===== render (Search Starts With & No Space Pinyin) ===== */
 let CURRENT=[], VISIBLE=0, PAGE=48;
-/* ===== render (แก้ไข: ทำให้ค้นหาพินอินแบบไม่เว้นวรรคได้) ===== */
-// ... (ส่วนประกาศตัวแปรต่างๆ) ...
+let scrollDebounceTimer = null; // Debounce Timer
 function render(){
   let list=CURRENT;
   const term=(q.value||'').toLowerCase().trim();
@@ -555,7 +565,6 @@ function render(){
     currentInitial = ''; // ล้าง Initial Filter
     document.querySelectorAll('.alpha button').forEach(x=>x.classList.remove('active')); // ล้างปุ่ม active
     
-    // NEW: สร้างคำค้นหาแบบไม่มีช่องว่างเพื่อเปรียบเทียบกับพินอิน
     const searchNoSpace = term.replace(/\s+/g, '');
     
     list=list.filter(r => {
@@ -620,24 +629,8 @@ function render(){
       chk.addEventListener('change', toggleGreenBg);
   });
   
-  // NEW: Scroll Logic - Throttling for infinite scroll
-  let isScrolling = false;
-  window.onscroll = () => {
-    // 1. เรียกใช้ handleScroll (สำหรับ Header Collapse และ Scroll-to-Top) ทันที
-    handleScroll(); 
-    
-    // 2. Throttling Logic สำหรับ Infinite Scroll
-    if (!isScrolling) {
-        isScrolling = true;
-        requestAnimationFrame(() => {
-            const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
-            if(nearBottom && VISIBLE < list.length){
-                loadMoreCards(list);
-            }
-            isScrolling = false;
-        });
-    }
-  };
+  // NEW: Scroll Logic - Throttling/Debouncing for infinite scroll
+  // ลบ window.onscroll เดิมออก และย้าย Logic ไปที่ Global Listener ด้านล่าง
 }
 
 /* ===== loadLiveDataset, event listeners, init (ไม่เปลี่ยนแปลง) ===== */
@@ -685,6 +678,41 @@ async function loadLiveDataset() {
 // Event Listeners สำหรับ Filter/Search และ Dataset Select
 q.addEventListener('input', render);
 datasetSel.addEventListener('change', loadLiveDataset);
+
+// **NEW:** Global Listener for Debounced Infinite Scroll
+let scrollLoadTimer = null;
+window.addEventListener('scroll', () => {
+    // Check if near bottom
+    const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
+    
+    if (nearBottom && VISIBLE < CURRENT.length) {
+        // Clear previous timer
+        clearTimeout(scrollLoadTimer);
+        
+        // Debounce loading to prevent stuttering while actively scrolling
+        scrollLoadTimer = setTimeout(() => {
+            // Need to get the current list again because it might have been filtered by search/initials
+            let list = CURRENT;
+            const term=(q.value||'').toLowerCase().trim();
+            if(term){
+                const searchNoSpace = term.replace(/\s+/g, '');
+                list=list.filter(r => {
+                    const pinyinNoSpace = deTone(r.pinyin).toLowerCase().replace(/\s+/g, '');
+                    if (pinyinNoSpace.startsWith(searchNoSpace)) return true;
+                    if ((r.simp + r.trad).startsWith(term)) return true;
+                    return false;
+                });
+            } else if(currentInitial) {
+                list=list.filter(r=>r.alpha===currentInitial);
+            }
+            
+            if(VISIBLE < list.length) {
+                loadMoreCards(list);
+            }
+        }, 150); // Wait 150ms after user stops scrolling before loading more
+    }
+});
+
 
 (function init(){
     // โหลดชุดคำศัพท์ที่เคยถูกเลือกไว้ล่าสุด หรือชุดแรก
