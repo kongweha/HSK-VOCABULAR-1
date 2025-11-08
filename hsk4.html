@@ -22,7 +22,7 @@
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
   .card{
     background:#fff;border:1px solid #eee;border-radius:18px;padding:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.04);
-    position: relative; /* เพิ่มเพื่อให้ badge-order อ้างอิงได้ */
+    position: relative; 
   }
   .c-top{display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:8px}
   .zz{font-size:40px;line-height:1}
@@ -50,6 +50,11 @@
   /* fallback glyph size will follow --cell (set by JS) */
   .writer.fallback{font-size:calc(var(--cell, 80px) * 0.66);color:#222}
 
+  /* NEW: Style สำหรับพื้นหลังสีเขียว (ควบคุมที่ writers-wrap) */
+  .writers-wrap.green-bg .writer{
+    background:#e8f5e9; /* Light Green */
+  }
+  
   .pinyin-row{display:flex;gap:8px;align-items:center;justify-content:center;margin:6px 0}
   .play-main{display:inline-flex;align-items:center;gap:8px;border:1px solid #ddd;background:#fff;border-radius:999px;padding:8px 14px;min-height:auto;font-size:16px}
   .play-main::before{content:'🔊'}
@@ -58,13 +63,32 @@
   .meaning{margin-top:8px;color:#333;font-size:16px;text-align:center}
   .badge{font-size:12px;color:#666}
   
-  /* NEW: Style สำหรับเลขลำดับ (อยู่มุมขวาบน) */
+  /* Style สำหรับเลขลำดับ (อยู่มุมขวาบน) */
   .badge-order{
     position: absolute;
-    top: var(--card); /* จัดตำแหน่งให้เข้ากับ padding ด้านบน */
-    right: var(--card); /* จัดตำแหน่งให้เข้ากับ padding ด้านขวา */
+    top: var(--card); 
+    right: var(--card); 
     font-size: 14px;
     color: #aaa;
+  }
+  
+  /* NEW: Style สำหรับ Checkbox ใน Card (มุมซ้ายบน) */
+  .badge-green-toggle{
+    position: absolute;
+    top: var(--card); 
+    left: var(--card); 
+    display:flex;
+    align-items:center;
+    z-index: 5; /* ให้อยู่เหนือเนื้อหาอื่นใน card */
+  }
+  .badge-green-toggle label{
+      cursor: pointer;
+  }
+  .badge-green-toggle input[type="checkbox"]{
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      cursor: pointer;
   }
 </style>
 </head>
@@ -87,7 +111,7 @@
 </main>
 
 <script>
-/* ===== SCRIPT START - NEW VERSION (Load Multiple Datasets from GitHub ONLY) ===== */
+/* ===== SCRIPT START - NEW VERSION (Green BG Per-Card) ===== */
 
 // ********************************************
 // * ⚠️ แก้ไขตรงนี้: ใส่รายการชุดคำศัพท์ของคุณ *
@@ -104,7 +128,7 @@ const GITHUB_DATASETS = [
 ];
 
 
-/* ===== DOM & storage keys (ลบ Local Storage Keys ของชุดคำศัพท์ออก) ===== */
+/* ===== DOM & storage keys ===== */
 const datasetSel=document.getElementById('dataset');
 const q=document.getElementById('q'), alphaBar=document.getElementById('alphaBar');
 const voiceSel=document.getElementById('voice'), count=document.getElementById('count');
@@ -112,6 +136,7 @@ const cardsEl=document.getElementById('cards');
 
 const LSK_VOICE = 'hsk4_voice';
 const LSK_CHAR_CACHE = 'hanzi_char_json_cache';
+const LSK_GREEN_BG_PREFIX = 'hsk4_green_bg_'; // Prefix สำหรับสถานะ Green BG ของแต่ละคำ
 let LAST_SELECTED_KEY = GITHUB_DATASETS[0]?.key || 'ds1';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -139,39 +164,29 @@ function pinyinInitial(p){
   return ch.toUpperCase();
 }
 
-/* ===== Voices (แก้ไข: ปรับปรุงการเลือกเสียง) ===== */
+/* ===== Voices (แก้ไข: บังคับเลือก 'tingting') ===== */
 function loadVoices(){
   if(!('speechSynthesis'in window))return;
   const allVoices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith('zh'));
   
-  // 1. ลองหาเสียงที่มีชื่อบ่งบอกว่าเป็น 'Standard' หรือ 'Male'/'Female' 
-  let preferredVoices = allVoices.filter(v => 
-    (v.name.includes('Standard') || v.name.includes('Male') || v.name.includes('Female'))
-  );
-
-  // 2. ถ้ามี preferredVoices น้อยกว่า 2 ให้เติมเสียงอื่นเข้ามา
-  if (preferredVoices.length < 2) {
-      // เติม 2 เสียงแรกที่ระบบมี (โดยไม่ซ้ำกับที่เลือกไว้แล้ว)
-      allVoices.forEach(v => {
-          if (!preferredVoices.some(pv => pv.name === v.name)) {
-              preferredVoices.push(v);
-          }
-      });
-      // ตัดเหลือแค่ 2 เสียงแรก
-      preferredVoices = preferredVoices.slice(0, 2);
-  } else if (preferredVoices.length > 2) {
-      // ถ้ามีเยอะกว่า 2 ให้พยายามเลือกเสียง Male/Female/Standard ที่ไม่ซ้ำกัน 2 เสียงแรก
-      const uniqueVoices = [];
-      const names = new Set();
-      preferredVoices.forEach(v => {
-          if (!names.has(v.name) && uniqueVoices.length < 2) {
-              names.add(v.name);
-              uniqueVoices.push(v);
-          }
-      });
-      preferredVoices = uniqueVoices;
+  const preferredVoices = [];
+  const names = new Set();
+  
+  // 1. บังคับเลือก 'tingting' เป็นอันดับแรก
+  const tingting = allVoices.find(v => v.name.toLowerCase().includes('tingting'));
+  if (tingting) {
+      preferredVoices.push(tingting);
+      names.add(tingting.name);
   }
   
+  // 2. เลือก 2 เสียงแรกที่ระบบมี (โดยไม่ซ้ำกับที่เลือกไว้แล้ว)
+  allVoices.forEach(v => {
+      if (!names.has(v.name) && preferredVoices.length < 2) {
+          preferredVoices.push(v);
+          names.add(v.name);
+      }
+  });
+
   // 3. แสดงผลใน Select
   voiceSel.innerHTML=''; 
   preferredVoices.forEach(v=>{
@@ -182,7 +197,12 @@ function loadVoices(){
   });
   
   const saved=localStorage.getItem(LSK_VOICE); 
-  if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) voiceSel.value=saved;
+  // หากมี 'tingting' ให้เลือก tingting เสมอ
+  if (tingting && Array.from(voiceSel.options).some(o => o.value === tingting.name)) {
+      voiceSel.value = tingting.name;
+  } else if(saved && Array.from(voiceSel.options).some(o=>o.value===saved)) {
+      voiceSel.value=saved;
+  }
 }
 function getVoice(){const name=voiceSel.value;return speechSynthesis.getVoices().find(v=>v.name===name)||null}
 let ttsReady = false;
@@ -208,7 +228,6 @@ function speak(text){
     const u=new SpeechSynthesisUtterance(text||'');
     u.lang='zh-CN'; 
     const v=getVoice(); 
-    // การแก้ไข: ใช้ u.voice=v หาก v ไม่ใช่ null (เพื่อให้ระบบเลือก Default หาก Voice ที่เลือกไว้หาไม่เจอ)
     if(v) u.voice=v; 
     u.rate=1.0; u.pitch=1.0;
     speechSynthesis.speak(u);
@@ -216,6 +235,30 @@ function speak(text){
 }
 if('speechSynthesis'in window){loadVoices(); speechSynthesis.onvoiceschanged=loadVoices}
 voiceSel.addEventListener('change',()=>localStorage.setItem(LSK_VOICE,voiceSel.value))
+
+/* ===== Green Background Per-Card Logic (NEW) ===== */
+function getGreenBgKey(simp){
+    return LSK_GREEN_BG_PREFIX + simp;
+}
+function isGreenBgActive(simp){
+    return localStorage.getItem(getGreenBgKey(simp)) === '1';
+}
+function saveGreenBgState(simp, isChecked){
+    if (isChecked) {
+        localStorage.setItem(getGreenBgKey(simp), '1');
+    } else {
+        localStorage.removeItem(getGreenBgKey(simp)); // ลบออกเพื่อประหยัดพื้นที่
+    }
+}
+function toggleGreenBg(e){
+    const checkbox = e.target;
+    const simp = checkbox.dataset.simp;
+    const writersWrap = checkbox.closest('.card').querySelector('.writers-wrap');
+
+    writersWrap.classList.toggle('green-bg', checkbox.checked);
+    saveGreenBgState(simp, checkbox.checked);
+}
+
 
 /* ===== parser (ไม่เปลี่ยนแปลง) ===== */
 function parseHSK(text){
@@ -343,7 +386,7 @@ function layoutWritersGrid(container, count){
   }
 }
 
-/* ===== render (แก้ไข: เพิ่มเลขลำดับไปอยู่ขวาบน) ===== */
+/* ===== render (แก้ไข: เพิ่ม Checkbox ต่อคำ) ===== */
 let CURRENT=[], VISIBLE=0, PAGE=48;
 function render(){
   let list=CURRENT;
@@ -363,14 +406,21 @@ function render(){
   const frag=document.createDocumentFragment();
   for(let i=0;i<VISIBLE;i++){
     const row=list[i];
+    const isGreen = isGreenBgActive(row.simp);
+    const checkedAttr = isGreen ? 'checked' : '';
+    const bgClass = isGreen ? ' green-bg' : '';
+
     const card=document.createElement('div'); card.className='card';
     const chars=(row.simp||'').split('').filter(c=>/\p{Script=Han}/u.test(c));
     card.innerHTML=`
+      <div class="badge-green-toggle">
+        <input type="checkbox" data-simp="${row.simp}" ${checkedAttr} class="green-bg-checkbox" id="gbc-${row.simp.replace(/[^a-z0-9]/g, '')}-${i}">
+      </div>
       <div class="c-top">
         <div class="zz">${row.simp}</div>
         <div class="tt">${row.trad}</div>
       </div>
-      <div class="writers-wrap"><div class="writers"></div></div>
+      <div class="writers-wrap${bgClass}"><div class="writers"></div></div>
       <div class="pinyin-row">
         <button class="play-main" type="button" data-text="${row.simp}">
           <span class="pinyin-text">${row.pinyin}</span>
@@ -384,10 +434,16 @@ function render(){
     frag.appendChild(card);
   }
   cardsEl.appendChild(frag);
+  
+  // Attach Listeners for Visible Cards
   cardsEl.querySelectorAll('.play-main').forEach(btn=>{
     btn.addEventListener('click', e=> speak(e.currentTarget.dataset.text));
   });
   cardsEl.querySelectorAll('.writer').forEach(tile=> tileObserver.observe(tile));
+  cardsEl.querySelectorAll('.green-bg-checkbox').forEach(chk => {
+      chk.addEventListener('change', toggleGreenBg);
+  });
+  
   window.onscroll = () => {
     const nearBottom = (window.innerHeight + window.scrollY) > (document.body.offsetHeight - 600);
     if(nearBottom && VISIBLE < list.length){
@@ -395,14 +451,21 @@ function render(){
       const frag2=document.createDocumentFragment();
       for(let i=VISIBLE;i<end;i++){
         const row=list[i];
+        const isGreen = isGreenBgActive(row.simp);
+        const checkedAttr = isGreen ? 'checked' : '';
+        const bgClass = isGreen ? ' green-bg' : '';
+
         const card=document.createElement('div'); card.className='card';
         const chars=(row.simp||'').split('').filter(c=>/\p{Script=Han}/u.test(c));
         card.innerHTML=`
+          <div class="badge-green-toggle">
+            <input type="checkbox" data-simp="${row.simp}" ${checkedAttr} class="green-bg-checkbox" id="gbc-${row.simp.replace(/[^a-z0-9]/g, '')}-${i}">
+          </div>
           <div class="c-top">
             <div class="zz">${row.simp}</div>
             <div class="tt">${row.trad}</div>
           </div>
-          <div class="writers-wrap"><div class="writers"></div></div>
+          <div class="writers-wrap${bgClass}"><div class="writers"></div></div>
           <div class="pinyin-row">
             <button class="play-main" type="button" data-text="${row.simp}">
               <span class="pinyin-text">${row.pinyin}</span>
@@ -416,12 +479,18 @@ function render(){
         frag2.appendChild(card);
       }
       cardsEl.appendChild(frag2);
+      
+      // Attach Listeners for newly added Cards
       cardsEl.querySelectorAll('.play-main').forEach(btn=>{
         if(!btn.dataset.bound){ btn.dataset.bound='1'; btn.addEventListener('click', e=> speak(e.currentTarget.dataset.text)); }
       });
       cardsEl.querySelectorAll('.writer').forEach(tile=>{
         if(!tile.dataset.observe){ tile.dataset.observe='1'; tileObserver.observe(tile); }
       });
+      cardsEl.querySelectorAll('.green-bg-checkbox').forEach(chk => {
+          if(!chk.dataset.bound){ chk.dataset.bound='1'; chk.addEventListener('change', toggleGreenBg); }
+      });
+      
       VISIBLE = end;
     }
   };
@@ -482,7 +551,7 @@ datasetSel.addEventListener('change', loadLiveDataset);
     // โหลดข้อมูลชุดแรก
     loadLiveDataset();
 
-    // ส่วน TTS/Voice ยังคงใช้ Local Storage
+    // ส่วน TTS/Voice
     if('speechSynthesis' in window){loadVoices(); speechSynthesis.onvoiceschanged=loadVoices}
 })();
 /* ===== SCRIPT END ===== */
