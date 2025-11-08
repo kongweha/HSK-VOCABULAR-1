@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>HSK Cards (Live Load from GitHub)</title>
+<title>HSK Cards</title>
 <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5.2/dist/hanzi-writer.min.js"></script>
 <style>
   :root{--pad:14px; --card:16px; --tile:160px; --gap:10px}
@@ -81,11 +81,14 @@
 // * ⚠️ แก้ไขตรงนี้: ใส่รายการชุดคำศัพท์ของคุณ *
 // ********************************************
 const GITHUB_DATASETS = [
-    // [ชุดที่ 1]
+    // [HSK 4]
     { key: 'ds1', title: 'HSK-Vocabulary-L4', url: 'https://raw.githubusercontent.com/kongweha/HSK-VOCABULAR-1/refs/heads/main/HSK-Vocabulary-L4.txt' }, 
-    // [ชุดที่ 2]
-    { key: 'ds2', title: 'ชุดคำศัพท์ B', url: 'https://raw.githubusercontent.com/kongweha/HSK-VOCABULAR-1/refs/heads/main/HSK-Vocabulary-L5.txt' },
-    // เพิ่มชุดคำศัพท์อื่นๆ ได้ตามรูปแบบด้านบน (คีย์ต้องไม่ซ้ำกัน)
+    // [HSK 5]
+    { key: 'ds2', title: 'HSK-Vocabulary-L5', url: 'https://raw.githubusercontent.com/kongweha/HSK-VOCABULAR-1/refs/heads/main/HSK-Vocabulary-L5.txt' },
+    // [HSK 6]
+    { key: 'ds3', title: 'HSK-Vocabulary-L6', url: 'https://raw.githubusercontent.com/kongweha/HSK-VOCABULAR-1/refs/heads/main/HSK-Vocabulary-L6.txt' },
+    // [Proverb]
+    { key: 'ds4', title: 'HSK-Vocabulary-L6', url: 'https://raw.githubusercontent.com/kongweha/HSK-VOCABULAR-1/refs/heads/main/Proverbs.txt' },
 ];
 
 
@@ -429,4 +432,5 @@ datasetSel.addEventListener('change', loadLiveDataset);
 /* ===== SCRIPT END ===== */
 </script>
 </body>
+
 </html>
